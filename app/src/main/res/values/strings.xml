@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Popstar DPC</string>
+    <string name="device_admin_description">Popstar DPC enforces enterprise device restrictions and local firewall rules.</string>
+</resources>
