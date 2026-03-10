@@ -12,22 +12,61 @@ class DevicePolicyEngine(private val context: Context) {
     private val dpm = context.getSystemService(DevicePolicyManager::class.java)
     private val admin = ComponentName(context, PopstarDeviceAdminReceiver::class.java)
 
-    fun applyRestrictions(policy: RestrictionPolicy) {
-        setRestriction(UserManager.DISALLOW_CONFIG_WIFI, policy.wifiBlocked)
-        setRestriction(UserManager.DISALLOW_SMS, policy.smsBlocked)
-        setRestriction(UserManager.DISALLOW_CONFIG_MOBILE_NETWORKS, policy.mobileDataBlocked)
-        setRestriction(UserManager.DISALLOW_FACTORY_RESET, policy.deviceResetBlocked)
-        setRestriction(UserManager.DISALLOW_NETWORK_RESET, policy.networkResetBlocked)
+    fun applyRestrictions(policy: RestrictionPolicy): List<String> {
+        if (!isAdminActive()) return listOf("Device admin is not active")
+        val failures = mutableListOf<String>()
+
+        applyRestriction(UserManager.DISALLOW_CONFIG_WIFI, policy.wifiBlocked, failures)
+        applyRestriction(UserManager.DISALLOW_SMS, policy.smsBlocked, failures)
+        applyRestriction(UserManager.DISALLOW_CONFIG_MOBILE_NETWORKS, policy.mobileDataBlocked, failures)
+        applyRestriction(UserManager.DISALLOW_FACTORY_RESET, policy.deviceResetBlocked, failures)
+        applyRestriction(UserManager.DISALLOW_NETWORK_RESET, policy.networkResetBlocked, failures)
+        applyRestriction(UserManager.DISALLOW_APPS_CONTROL, policy.appResetBlocked, failures)
+
+        // Additional hardening commonly used on managed devices.
+        applyRestriction(UserManager.DISALLOW_SAFE_BOOT, policy.deviceResetBlocked, failures)
+        applyRestriction(UserManager.DISALLOW_ADD_USER, policy.deviceResetBlocked, failures)
+        applyRestriction(UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES, policy.appResetBlocked, failures)
+        applyRestriction(UserManager.DISALLOW_USB_FILE_TRANSFER, policy.mobileDataBlocked, failures)
+
+        if (!setForceVpn(policy.forceVpn)) {
+            failures.add("Failed to configure always-on VPN")
+        }
+        return failures
     }
 
-    fun suspendPackages(rules: List<AppRule>) {
-        val targets = rules.filter { it.suspended }.map { it.packageName }.toTypedArray()
-        if (targets.isNotEmpty()) dpm.setPackagesSuspended(admin, targets, true)
+    fun applySuspensionRules(rules: List<AppRule>): List<String> {
+        if (!isAdminActive()) return listOf("Device admin is not active")
+        val failures = mutableListOf<String>()
+        val suspend = rules.filter { it.suspended }.map { it.packageName }.toTypedArray()
+        val unsuspend = rules.filter { !it.suspended }.map { it.packageName }.toTypedArray()
+        runCatching {
+            if (suspend.isNotEmpty()) dpm.setPackagesSuspended(admin, suspend, true)
+            if (unsuspend.isNotEmpty()) dpm.setPackagesSuspended(admin, unsuspend, false)
+        }.onFailure {
+            failures.add("Package suspension update failed: ${it.message}")
+        }
+        return failures
     }
 
     fun isAdminActive(): Boolean = dpm.isAdminActive(admin)
 
-    private fun setRestriction(key: String, enabled: Boolean) {
-        if (enabled) dpm.addUserRestriction(admin, key) else dpm.clearUserRestriction(admin, key)
+    private fun applyRestriction(key: String, enabled: Boolean, failures: MutableList<String>) {
+        runCatching {
+            if (enabled) dpm.addUserRestriction(admin, key) else dpm.clearUserRestriction(admin, key)
+        }.onFailure {
+            failures.add("$key failed: ${it.message}")
+        }
+    }
+
+    private fun setForceVpn(enabled: Boolean): Boolean {
+        return runCatching {
+            if (enabled) {
+                dpm.setAlwaysOnVpnPackage(admin, context.packageName, true)
+            } else {
+                dpm.setAlwaysOnVpnPackage(admin, null, false)
+            }
+            true
+        }.getOrElse { false }
     }
 }

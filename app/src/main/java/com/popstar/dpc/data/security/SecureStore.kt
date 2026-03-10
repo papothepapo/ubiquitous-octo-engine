@@ -17,14 +17,29 @@ class SecureStore(context: Context) {
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
     )
 
-    fun savePasswordHash(hash: String) = prefs.edit().putString(KEY_PASSWORD_HASH, hash).apply()
-    fun getPasswordHash(): String? = prefs.getString(KEY_PASSWORD_HASH, null)
+    fun savePasswordRecord(record: PasswordRecord) {
+        prefs.edit()
+            .putString(KEY_PASSWORD_HASH, record.hashBase64)
+            .putString(KEY_PASSWORD_SALT, record.saltBase64)
+            .apply()
+    }
+
+    fun getPasswordRecord(): PasswordRecord? {
+        val hash = prefs.getString(KEY_PASSWORD_HASH, null) ?: return null
+        val salt = prefs.getString(KEY_PASSWORD_SALT, null) ?: return null
+        return PasswordRecord(hash, salt)
+    }
+
+    fun clearPasswordRecord() {
+        prefs.edit().remove(KEY_PASSWORD_HASH).remove(KEY_PASSWORD_SALT).apply()
+    }
 
     fun saveEncryptedPolicy(blob: String) = prefs.edit().putString(KEY_POLICY_BLOB, blob).apply()
     fun getEncryptedPolicy(): String? = prefs.getString(KEY_POLICY_BLOB, null)
 
     companion object {
         private const val KEY_PASSWORD_HASH = "password_hash"
+        private const val KEY_PASSWORD_SALT = "password_salt"
         private const val KEY_POLICY_BLOB = "policy_blob"
     }
 }

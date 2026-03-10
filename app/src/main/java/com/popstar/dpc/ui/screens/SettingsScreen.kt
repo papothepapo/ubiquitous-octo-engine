@@ -8,7 +8,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun SettingsScreen() {
+fun SettingsScreen(
+    onDisablePassword: () -> Unit,
+    importExportStatus: String?,
+    enforcementStatus: String?,
+    onExport: () -> Unit,
+    onImport: () -> Unit,
+    onStartVpn: () -> Unit
+) {
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             ElevatedCard {
@@ -20,17 +27,30 @@ fun SettingsScreen() {
         }
         item {
             ElevatedCard {
-                Column(Modifier.fillMaxWidth().padding(12.dp)) {
-                    Text("Policy backup and restore")
-                    Button(onClick = {}) { Text("Export encrypted policy") }
-                    Button(onClick = {}) { Text("Import encrypted policy") }
+                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Password")
+                    Button(onClick = onDisablePassword) { Text("Disable password") }
                 }
             }
         }
         item {
             ElevatedCard {
-                Column(Modifier.fillMaxWidth().padding(12.dp)) {
-                    Text("About / Legal / Support")
+                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("VPN / Firewall")
+                    Button(onClick = onStartVpn) { Text("Start local VPN") }
+                    enforcementStatus?.let { Text("Policy apply status: $it") }
+                }
+            }
+        }
+        item {
+            ElevatedCard {
+                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Policy backup and restore")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = onExport) { Text("Export encrypted policy") }
+                        Button(onClick = onImport) { Text("Import encrypted policy") }
+                    }
+                    importExportStatus?.let { Text(it) }
                 }
             }
         }

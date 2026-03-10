@@ -2,35 +2,38 @@ package com.popstar.dpc.ui.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.popstar.dpc.data.model.PasswordEnforcementMode
+import com.popstar.dpc.data.model.RestrictionPolicy
 
 @Composable
-fun DeviceControlScreen() {
-    var expanded by remember { mutableStateOf(false) }
-    var forceVpn by remember { mutableStateOf(false) }
-    val sampleApps = listOf("com.chat.app", "com.video.app", "com.browser.app")
+fun DeviceControlScreen(
+    restrictionPolicy: RestrictionPolicy,
+    enforcementMode: PasswordEnforcementMode,
+    onRestrictionChanged: (RestrictionPolicy) -> Unit,
+    onEnforcementModeChanged: (PasswordEnforcementMode) -> Unit,
+    onApplyPolicies: () -> Unit
+) {
+    val expanded = remember { mutableStateOf(false) }
 
-    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
         item {
             ElevatedCard {
                 Column(Modifier.fillMaxWidth().padding(12.dp)) {
                     Text("Application control", style = MaterialTheme.typography.titleMedium)
-                    Button(onClick = { expanded = !expanded }) { Text(if (expanded) "Collapse" else "Expand") }
-                    if (expanded) {
-                        OutlinedTextField("", {}, label = { Text("Search apps") }, modifier = Modifier.fillMaxWidth())
-                        sampleApps.forEach {
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(it)
-                                Row {
-                                    TextButton(onClick = {}) { Text("Block") }
-                                    TextButton(onClick = {}) { Text("Suspend") }
-                                }
-                            }
-                        }
+                    Button(onClick = { expanded.value = !expanded.value }) {
+                        Text(if (expanded.value) "Collapse" else "Expand")
+                    }
+                    if (expanded.value) {
+                        Text("App inventory wiring is pending for full package manager integration.")
                     }
                 }
             }
@@ -39,13 +42,28 @@ fun DeviceControlScreen() {
             ElevatedCard {
                 Column(Modifier.fillMaxWidth().padding(12.dp)) {
                     Text("System restriction toggles", style = MaterialTheme.typography.titleMedium)
-                    SwitchRow("Force VPN usage", forceVpn) { forceVpn = it }
-                    SwitchRow("Block Wi-Fi", false) {}
-                    SwitchRow("Block SMS", false) {}
-                    SwitchRow("Block mobile data", false) {}
-                    SwitchRow("Block device reset", true) {}
-                    SwitchRow("Block network reset", true) {}
-                    SwitchRow("Block app reset", false) {}
+                    SwitchRow("Force VPN usage", restrictionPolicy.forceVpn) {
+                        onRestrictionChanged(restrictionPolicy.copy(forceVpn = it))
+                    }
+                    SwitchRow("Block Wi-Fi", restrictionPolicy.wifiBlocked) {
+                        onRestrictionChanged(restrictionPolicy.copy(wifiBlocked = it))
+                    }
+                    SwitchRow("Block SMS", restrictionPolicy.smsBlocked) {
+                        onRestrictionChanged(restrictionPolicy.copy(smsBlocked = it))
+                    }
+                    SwitchRow("Block mobile data", restrictionPolicy.mobileDataBlocked) {
+                        onRestrictionChanged(restrictionPolicy.copy(mobileDataBlocked = it))
+                    }
+                    SwitchRow("Block device reset", restrictionPolicy.deviceResetBlocked) {
+                        onRestrictionChanged(restrictionPolicy.copy(deviceResetBlocked = it))
+                    }
+                    SwitchRow("Block network reset", restrictionPolicy.networkResetBlocked) {
+                        onRestrictionChanged(restrictionPolicy.copy(networkResetBlocked = it))
+                    }
+                    SwitchRow("Block app reset", restrictionPolicy.appResetBlocked) {
+                        onRestrictionChanged(restrictionPolicy.copy(appResetBlocked = it))
+                    }
+                    Button(onClick = onApplyPolicies) { Text("Apply on device") }
                 }
             }
         }
@@ -53,8 +71,24 @@ fun DeviceControlScreen() {
             ElevatedCard {
                 Column(Modifier.fillMaxWidth().padding(12.dp)) {
                     Text("Password management", style = MaterialTheme.typography.titleMedium)
-                    Button(onClick = {}) { Text("Change password") }
-                    Button(onClick = {}) { Text("Configure enforcement mode") }
+                    Text("Enforcement mode")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = enforcementMode == PasswordEnforcementMode.PERSISTENT,
+                            onClick = { onEnforcementModeChanged(PasswordEnforcementMode.PERSISTENT) },
+                            label = { Text("Persistent") }
+                        )
+                        FilterChip(
+                            selected = enforcementMode == PasswordEnforcementMode.TIMED,
+                            onClick = { onEnforcementModeChanged(PasswordEnforcementMode.TIMED) },
+                            label = { Text("Timed") }
+                        )
+                        FilterChip(
+                            selected = enforcementMode == PasswordEnforcementMode.DISABLED,
+                            onClick = { onEnforcementModeChanged(PasswordEnforcementMode.DISABLED) },
+                            label = { Text("Disabled") }
+                        )
+                    }
                 }
             }
         }
