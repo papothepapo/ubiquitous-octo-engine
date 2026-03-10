@@ -11,6 +11,10 @@ import android.os.Build
 import android.os.ParcelFileDescriptor
 import com.popstar.dpc.data.firewall.FirewallRuleEngine
 import com.popstar.dpc.data.firewall.FirewallRuntime
+import android.app.Service
+import android.content.Intent
+import android.net.VpnService
+import android.os.ParcelFileDescriptor
 import java.io.FileInputStream
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -28,6 +32,9 @@ class PopstarVpnService : VpnService() {
 
         if (running.compareAndSet(false, true)) {
             startForeground(NOTIFICATION_ID, buildNotification())
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (running.compareAndSet(false, true)) {
             val builder = Builder()
                 .setSession("Popstar Local Firewall")
                 .addAddress("10.66.0.2", 32)
@@ -37,11 +44,13 @@ class PopstarVpnService : VpnService() {
             startReadLoop()
         }
         return Service.START_REDELIVER_INTENT
+        return Service.START_STICKY
     }
 
     private fun startReadLoop() {
         val fd = vpnInterface?.fileDescriptor ?: return
         worker = Thread({
+        Thread {
             FileInputStream(fd).use { input ->
                 val buffer = ByteArray(32767)
                 while (running.get()) {
@@ -61,6 +70,10 @@ class PopstarVpnService : VpnService() {
     override fun onRevoke() {
         super.onRevoke()
         stopSelf()
+                    // Packet inspection and blocking decisions are evaluated here.
+                }
+            }
+        }.start()
     }
 
     override fun onDestroy() {
@@ -103,5 +116,8 @@ class PopstarVpnService : VpnService() {
         private const val CHANNEL_ID = "popstar_vpn"
         private const val NOTIFICATION_ID = 7
         private const val ACTION_STOP = "com.popstar.dpc.vpn.STOP"
+    }
+        vpnInterface?.close()
+        super.onDestroy()
     }
 }
