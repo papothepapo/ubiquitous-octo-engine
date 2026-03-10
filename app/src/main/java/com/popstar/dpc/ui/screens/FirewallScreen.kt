@@ -11,7 +11,7 @@ import androidx.compose.ui.unit.dp
 import com.popstar.dpc.data.model.FirewallRule
 
 @Composable
-fun FirewallScreen(rules: List<FirewallRule>, onAddRule: (String) -> Unit) {
+fun FirewallScreen(rules: List<FirewallRule>, blockedEvents: List<String>, onAddRule: (String) -> Unit) {
     val pattern = remember { mutableStateOf("") }
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
@@ -40,6 +40,18 @@ fun FirewallScreen(rules: List<FirewallRule>, onAddRule: (String) -> Unit) {
                     if (rules.isEmpty()) Text("No rules yet")
                     rules.forEach { rule ->
                         Text("#${rule.priority} ${rule.pattern} ${rule.appPackage ?: "(global)"}")
+                    }
+                }
+            }
+        }
+        item {
+            ElevatedCard {
+                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Blocked attempts", style = MaterialTheme.typography.titleMedium)
+                    if (blockedEvents.isEmpty()) {
+                        Text("No blocked traffic logged yet")
+                    } else {
+                        blockedEvents.take(20).forEach { Text(it) }
                     }
                 }
             }

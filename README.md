@@ -7,8 +7,9 @@ Popstar DPC is a production-focused Android **Device Policy Controller (DPC)** w
 - Password enforcement modes: timed, persistent, and disabled.
 - First-run password setup gate and launch unlock enforcement when policy requires it.
 - Bottom navigation with Device Control, Firewall, and Settings tabs.
-- On-device `VpnService` scaffold for app/domain filtering (full packet forwarder pending).
+- On-device `VpnService` with DNS packet parsing and local blocked-attempt logging (full transport forwarder still pending).
 - Policy bundle model with encrypted export/import-ready storage.
+- Export/import encrypted policy files via Settings file picker flow.
 - Audit log model and retention/export hooks.
 - Unit tests for policy logic and firewall rule matching.
 

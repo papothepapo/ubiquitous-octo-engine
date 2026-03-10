@@ -12,9 +12,9 @@
 ## P1 (hardening next)
 - [ ] Full app inventory with bulk-select and real package actions.
 - [ ] Complete DPM restrictions mapped to OEM/API-specific safe calls.
-- [ ] Full VPN packet parsing (DNS + SNI + QUIC handling).
+- [~] VPN DNS packet parsing + block-event logging implemented; full SNI/QUIC forwarder still pending.
 - [ ] Foreground service notifications + reliability improvements (still pending).
-- [ ] Encrypted policy import/export UX with file picker (storage backend now in place).
+- [x] Encrypted policy import/export UX with file picker implemented.
 
 ## P2 (enterprise polish)
 - [ ] Managed configurations support.

@@ -8,7 +8,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 @Composable
-fun SettingsScreen(onDisablePassword: () -> Unit) {
+fun SettingsScreen(
+    onDisablePassword: () -> Unit,
+    importExportStatus: String?,
+    onExport: () -> Unit,
+    onImport: () -> Unit,
+    onStartVpn: () -> Unit
+) {
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             ElevatedCard {
@@ -20,7 +26,7 @@ fun SettingsScreen(onDisablePassword: () -> Unit) {
         }
         item {
             ElevatedCard {
-                Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Password")
                     Button(onClick = onDisablePassword) { Text("Disable password") }
                 }
@@ -28,9 +34,21 @@ fun SettingsScreen(onDisablePassword: () -> Unit) {
         }
         item {
             ElevatedCard {
-                Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("VPN / Firewall")
+                    Button(onClick = onStartVpn) { Text("Start local VPN") }
+                }
+            }
+        }
+        item {
+            ElevatedCard {
+                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Policy backup and restore")
-                    Text("Encrypted import/export wiring remains in-progress.")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = onExport) { Text("Export encrypted policy") }
+                        Button(onClick = onImport) { Text("Import encrypted policy") }
+                    }
+                    importExportStatus?.let { Text(it) }
                 }
             }
         }

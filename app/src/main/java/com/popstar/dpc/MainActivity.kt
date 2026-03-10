@@ -1,17 +1,23 @@
 package com.popstar.dpc
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.popstar.dpc.auth.PasswordPolicyEvaluator
+import com.popstar.dpc.data.firewall.FirewallRuntime
 import com.popstar.dpc.data.model.*
 import com.popstar.dpc.data.policy.DevicePolicyEngine
 import com.popstar.dpc.data.policy.PolicyStorage
@@ -37,6 +43,7 @@ class MainActivity : ComponentActivity() {
 
                 LaunchedEffect(Unit) {
                     bundle = policyStorage.load()
+                    FirewallRuntime.rules = bundle.firewallRules
                     val record = secureStore.getPasswordRecord()
                     val passwordRequired = PasswordPolicyEvaluator.isPasswordRequired(
                         bundle.passwordPolicy,
@@ -76,8 +83,10 @@ class MainActivity : ComponentActivity() {
                         bundle = bundle,
                         onBundleChange = {
                             bundle = it
+                            FirewallRuntime.rules = it.firewallRules
                             policyStorage.save(it)
                         },
+                        policyStorage = policyStorage,
                         onApplyPolicies = {
                             devicePolicyEngine.applyRestrictions(bundle.restrictionPolicy)
                             devicePolicyEngine.applySuspensionRules(bundle.appRules)
@@ -101,9 +110,42 @@ class MainActivity : ComponentActivity() {
 private fun MainTabs(
     bundle: PolicyBundle,
     onBundleChange: (PolicyBundle) -> Unit,
+    policyStorage: PolicyStorage,
     onApplyPolicies: () -> Unit,
     onDisablePassword: () -> Unit
 ) {
+    val context = LocalContext.current
+    var importExportStatus by remember { mutableStateOf<String?>(null) }
+
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val payload = policyStorage.exportEncryptedPolicy(bundle)
+        runCatching {
+            context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(payload) }
+        }.onSuccess {
+            importExportStatus = "Exported encrypted policy"
+        }.onFailure {
+            importExportStatus = "Export failed: ${it.message}"
+        }
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        runCatching {
+            context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+        }.onSuccess { payload ->
+            val parsed = payload?.let { policyStorage.importEncryptedPolicy(it) }
+            if (parsed != null) {
+                onBundleChange(parsed)
+                importExportStatus = "Imported encrypted policy"
+            } else {
+                importExportStatus = "Import failed: invalid payload"
+            }
+        }.onFailure {
+            importExportStatus = "Import failed: ${it.message}"
+        }
+    }
+
     val navController = rememberNavController()
     val items = listOf("device", "firewall", "settings")
     Scaffold(
@@ -147,7 +189,10 @@ private fun MainTabs(
                 )
             }
             composable("firewall") {
-                FirewallScreen(bundle.firewallRules) { pattern ->
+                FirewallScreen(
+                    rules = bundle.firewallRules,
+                    blockedEvents = FirewallRuntime.events()
+                ) { pattern ->
                     val next = FirewallRule(
                         id = System.currentTimeMillis().toString(),
                         pattern = pattern,
@@ -157,7 +202,17 @@ private fun MainTabs(
                 }
             }
             composable("settings") {
-                SettingsScreen(onDisablePassword = onDisablePassword)
+                SettingsScreen(
+                    onDisablePassword = onDisablePassword,
+                    importExportStatus = importExportStatus,
+                    onExport = { exportLauncher.launch("popstar-policy.enc.json") },
+                    onImport = {
+                        importLauncher.launch(arrayOf("application/json", "text/plain"))
+                    },
+                    onStartVpn = {
+                        context.startService(Intent(context, com.popstar.dpc.vpn.PopstarVpnService::class.java))
+                    }
+                )
             }
         }
     }
