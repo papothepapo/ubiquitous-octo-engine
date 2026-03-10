@@ -11,6 +11,7 @@ import androidx.compose.ui.unit.dp
 fun SettingsScreen(
     onDisablePassword: () -> Unit,
     importExportStatus: String?,
+    enforcementStatus: String?,
     onExport: () -> Unit,
     onImport: () -> Unit,
     onStartVpn: () -> Unit
@@ -37,6 +38,7 @@ fun SettingsScreen(
                 Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("VPN / Firewall")
                     Button(onClick = onStartVpn) { Text("Start local VPN") }
+                    enforcementStatus?.let { Text("Policy apply status: $it") }
                 }
             }
         }

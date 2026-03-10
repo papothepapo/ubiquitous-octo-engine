@@ -88,8 +88,10 @@ class MainActivity : ComponentActivity() {
                         },
                         policyStorage = policyStorage,
                         onApplyPolicies = {
-                            devicePolicyEngine.applyRestrictions(bundle.restrictionPolicy)
-                            devicePolicyEngine.applySuspensionRules(bundle.appRules)
+                            val restrictionFailures = devicePolicyEngine.applyRestrictions(bundle.restrictionPolicy)
+                            val suspensionFailures = devicePolicyEngine.applySuspensionRules(bundle.appRules)
+                            val failures = restrictionFailures + suspensionFailures
+                            if (failures.isEmpty()) "Policies applied" else failures.joinToString("; ")
                         },
                         onDisablePassword = {
                             secureStore.clearPasswordRecord()
@@ -111,11 +113,12 @@ private fun MainTabs(
     bundle: PolicyBundle,
     onBundleChange: (PolicyBundle) -> Unit,
     policyStorage: PolicyStorage,
-    onApplyPolicies: () -> Unit,
+    onApplyPolicies: () -> String?,
     onDisablePassword: () -> Unit
 ) {
     val context = LocalContext.current
     var importExportStatus by remember { mutableStateOf<String?>(null) }
+    var enforcementStatus by remember { mutableStateOf<String?>(null) }
 
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -185,7 +188,9 @@ private fun MainTabs(
                             )
                         )
                     },
-                    onApplyPolicies = onApplyPolicies
+                    onApplyPolicies = {
+                        onApplyPolicies()?.let { enforcementStatus = it }
+                    }
                 )
             }
             composable("firewall") {
@@ -205,6 +210,7 @@ private fun MainTabs(
                 SettingsScreen(
                     onDisablePassword = onDisablePassword,
                     importExportStatus = importExportStatus,
+                    enforcementStatus = enforcementStatus,
                     onExport = { exportLauncher.launch("popstar-policy.enc.json") },
                     onImport = {
                         importLauncher.launch(arrayOf("application/json", "text/plain"))

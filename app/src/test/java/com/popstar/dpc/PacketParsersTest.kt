@@ -14,6 +14,13 @@ class PacketParsersTest {
     }
 
     @Test
+    fun parsesTlsSniHost() {
+        val packet = buildTlsClientHelloPacket("video.example.com")
+        val host = PacketParsers.extractTlsSniHost(packet, packet.size)
+        assertEquals("video.example.com", host)
+    }
+
+    @Test
     fun returnsNullForNonDnsPacket() {
         val packet = ByteArray(40)
         packet[0] = 0x45
@@ -52,4 +59,50 @@ class PacketParsersTest {
         System.arraycopy(dns, 0, packet, ihl + 8, dns.size)
         return packet
     }
+
+    private fun buildTlsClientHelloPacket(host: String): ByteArray {
+        val hostBytes = host.toByteArray(Charsets.US_ASCII)
+        val sniName = byteArrayOf(0x00) + u16(hostBytes.size) + hostBytes
+        val sniList = u16(sniName.size) + sniName
+        val sniExt = u16(0x0000) + u16(sniList.size) + sniList
+        val extensions = sniExt
+
+        val body = mutableListOf<Byte>()
+        body += byteArrayOf(0x03, 0x03).toList() // client version
+        body += ByteArray(32).toList() // random
+        body += byteArrayOf(0x00).toList() // session id len
+        body += byteArrayOf(0x00, 0x02).toList() // cipher suites len
+        body += byteArrayOf(0x13, 0x01).toList() // TLS_AES_128_GCM_SHA256
+        body += byteArrayOf(0x01, 0x00).toList() // compression methods
+        body += u16(extensions.size).toList()
+        body += extensions.toList()
+
+        val handshake = mutableListOf<Byte>()
+        handshake += 0x01.toByte() // client hello
+        handshake += u24(body.size).toList()
+        handshake += body
+
+        val tls = mutableListOf<Byte>()
+        tls += 0x16.toByte() // handshake record
+        tls += byteArrayOf(0x03, 0x03).toList()
+        tls += u16(handshake.size).toList()
+        tls += handshake
+
+        val tcpHeaderLen = 20
+        val ipHeaderLen = 20
+        val packet = ByteArray(ipHeaderLen + tcpHeaderLen + tls.size)
+        packet[0] = 0x45
+        packet[9] = 0x06 // TCP
+        val srcPort = 55555
+        packet[ipHeaderLen] = ((srcPort shr 8) and 0xFF).toByte()
+        packet[ipHeaderLen + 1] = (srcPort and 0xFF).toByte()
+        packet[ipHeaderLen + 2] = 0x01
+        packet[ipHeaderLen + 3] = (0xBB).toByte() // 443
+        packet[ipHeaderLen + 12] = 0x50 // data offset 5 (20 bytes)
+        System.arraycopy(tls.toByteArray(), 0, packet, ipHeaderLen + tcpHeaderLen, tls.size)
+        return packet
+    }
+
+    private fun u16(value: Int): ByteArray = byteArrayOf(((value shr 8) and 0xFF).toByte(), (value and 0xFF).toByte())
+    private fun u24(value: Int): ByteArray = byteArrayOf(((value shr 16) and 0xFF).toByte(), ((value shr 8) and 0xFF).toByte(), (value and 0xFF).toByte())
 }
