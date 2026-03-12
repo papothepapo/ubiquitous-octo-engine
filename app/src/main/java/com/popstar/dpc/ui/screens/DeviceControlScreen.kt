@@ -2,7 +2,6 @@ package com.popstar.dpc.ui.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
@@ -74,7 +73,7 @@ fun DeviceControlScreen(
                             Button(onClick = { bulkUpdate { it.copy(blocked = false, suspended = false, networkBlocked = false) } }) { Text("Bulk allow") }
                         }
 
-                        items(filtered.take(80)) { app ->
+                        filtered.take(80).forEach { app ->
                             val rule = appRules.firstOrNull { it.packageName == app.packageName }
                             val isSelected = app.packageName in selected.value
                             ElevatedCard {

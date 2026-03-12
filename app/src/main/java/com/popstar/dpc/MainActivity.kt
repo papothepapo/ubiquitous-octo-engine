@@ -9,8 +9,17 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.compose.NavHost
@@ -19,13 +28,21 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.popstar.dpc.auth.PasswordPolicyEvaluator
 import com.popstar.dpc.data.firewall.FirewallRuntime
-import com.popstar.dpc.data.model.*
+import com.popstar.dpc.data.model.FirewallRule
+import com.popstar.dpc.data.model.PasswordEnforcementMode
+import com.popstar.dpc.data.model.PasswordPolicy
+import com.popstar.dpc.data.model.PolicyBundle
 import com.popstar.dpc.data.policy.DevicePolicyEngine
 import com.popstar.dpc.data.policy.PolicyStorage
 import com.popstar.dpc.data.security.CryptoManager
 import com.popstar.dpc.data.security.PasswordHasher
 import com.popstar.dpc.data.security.SecureStore
-import com.popstar.dpc.ui.screens.*
+import com.popstar.dpc.ui.screens.DeviceControlScreen
+import com.popstar.dpc.ui.screens.FirewallScreen
+import com.popstar.dpc.ui.screens.InstalledAppInfo
+import com.popstar.dpc.ui.screens.SettingsScreen
+import com.popstar.dpc.ui.screens.SetupPasswordScreen
+import com.popstar.dpc.ui.screens.UnlockScreen
 import com.popstar.dpc.ui.theme.PopstarTheme
 
 private enum class AuthState { LOADING, SETUP, LOCKED, UNLOCKED }
@@ -47,11 +64,13 @@ class MainActivity : ComponentActivity() {
                     bundle = policyStorage.load()
                     installedApps = loadLaunchableApps(packageManager)
                     FirewallRuntime.rules = bundle.firewallRules
-                    FirewallRuntime.blockedPackages = bundle.appRules.filter { it.networkBlocked }.map { it.packageName }.toSet()
+                    FirewallRuntime.blockedPackages = bundle.appRules
+                        .filter { it.networkBlocked }
+                        .map { it.packageName }
+                        .toSet()
+                }
 
                 LaunchedEffect(Unit) {
-                    bundle = policyStorage.load()
-                    FirewallRuntime.rules = bundle.firewallRules
                     val record = secureStore.getPasswordRecord()
                     val passwordRequired = PasswordPolicyEvaluator.isPasswordRequired(
                         bundle.passwordPolicy,
@@ -83,7 +102,9 @@ class MainActivity : ComponentActivity() {
                     AuthState.LOCKED -> UnlockScreen { entered ->
                         val record = secureStore.getPasswordRecord() ?: return@UnlockScreen false
                         val ok = PasswordHasher.verify(entered, record.hashBase64, record.saltBase64)
-                        if (ok) authState = AuthState.UNLOCKED
+                        if (ok) {
+                            authState = AuthState.UNLOCKED
+                        }
                         ok
                     }
 
@@ -93,16 +114,18 @@ class MainActivity : ComponentActivity() {
                         onBundleChange = {
                             bundle = it
                             FirewallRuntime.rules = it.firewallRules
-                            FirewallRuntime.blockedPackages = it.appRules.filter { rule -> rule.networkBlocked }.map { rule -> rule.packageName }.toSet()
-                        onBundleChange = {
-                            bundle = it
-                            FirewallRuntime.rules = it.firewallRules
+                            FirewallRuntime.blockedPackages = it.appRules
+                                .filter { rule -> rule.networkBlocked }
+                                .map { rule -> rule.packageName }
+                                .toSet()
                             policyStorage.save(it)
                         },
                         policyStorage = policyStorage,
                         onApplyPolicies = {
-                            val restrictionFailures = devicePolicyEngine.applyRestrictions(bundle.restrictionPolicy)
-                            val suspensionFailures = devicePolicyEngine.applySuspensionRules(bundle.appRules)
+                            val restrictionFailures =
+                                devicePolicyEngine.applyRestrictions(bundle.restrictionPolicy)
+                            val suspensionFailures =
+                                devicePolicyEngine.applySuspensionRules(bundle.appRules)
                             val failures = restrictionFailures + suspensionFailures
                             if (failures.isEmpty()) "Policies applied" else failures.joinToString("; ")
                         },
@@ -134,7 +157,9 @@ private fun MainTabs(
     var importExportStatus by remember { mutableStateOf<String?>(null) }
     var enforcementStatus by remember { mutableStateOf<String?>(null) }
 
-    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? ->
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
         val payload = policyStorage.exportEncryptedPolicy(bundle)
         runCatching {
@@ -165,6 +190,7 @@ private fun MainTabs(
 
     val navController = rememberNavController()
     val items = listOf("device", "firewall", "settings")
+
     Scaffold(
         bottomBar = {
             NavigationBar {
