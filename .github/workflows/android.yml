@@ -3,6 +3,29 @@ name: Android CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
+    inputs:
+      publish_to_release:
+        description: "Publish release APK to GitHub Releases"
+        required: false
+        default: false
+        type: boolean
+      release_tag:
+        description: "Tag to create/update when publishing (for example v1.0.0)"
+        required: false
+        type: string
+      release_name:
+        description: "Optional GitHub Release title"
+        required: false
+        type: string
+      prerelease:
+        description: "Mark published release as pre-release"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -18,3 +41,34 @@ jobs:
         run: gradle testDebugUnitTest
       - name: Build debug/release
         run: gradle assembleDebug assembleRelease
+      - name: Upload release APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-apk
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+
+  publish-release:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_to_release }}
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Validate release tag input
+        if: ${{ inputs.release_tag == '' }}
+        run: |
+          echo "Input 'release_tag' is required when publish_to_release is enabled."
+          exit 1
+      - name: Download release APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: app-release-apk
+          path: release-artifacts
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          name: ${{ inputs.release_name || inputs.release_tag }}
+          prerelease: ${{ inputs.prerelease }}
+          files: release-artifacts/*.apk
