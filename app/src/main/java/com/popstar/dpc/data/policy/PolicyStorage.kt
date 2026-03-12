@@ -4,6 +4,7 @@ import com.popstar.dpc.data.model.PolicyBundle
 import com.popstar.dpc.data.security.CryptoManager
 import com.popstar.dpc.data.security.SecureStore
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 @Serializable
