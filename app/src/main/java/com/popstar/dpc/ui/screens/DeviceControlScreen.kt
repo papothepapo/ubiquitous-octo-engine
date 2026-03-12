@@ -16,6 +16,9 @@ import com.popstar.dpc.data.model.RestrictionPolicy
 /** Launchable app metadata for app-control UI. */
 data class InstalledAppInfo(val packageName: String, val label: String)
 
+import com.popstar.dpc.data.model.PasswordEnforcementMode
+import com.popstar.dpc.data.model.RestrictionPolicy
+
 @Composable
 fun DeviceControlScreen(
     restrictionPolicy: RestrictionPolicy,
@@ -53,6 +56,7 @@ fun DeviceControlScreen(
         item {
             ElevatedCard {
                 Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(Modifier.fillMaxWidth().padding(12.dp)) {
                     Text("Application control", style = MaterialTheme.typography.titleMedium)
                     Button(onClick = { expanded.value = !expanded.value }) {
                         Text(if (expanded.value) "Collapse" else "Expand")
@@ -111,6 +115,7 @@ fun DeviceControlScreen(
                                 }
                             }
                         }
+                        Text("App inventory wiring is pending for full package manager integration.")
                     }
                 }
             }

@@ -48,6 +48,10 @@ class MainActivity : ComponentActivity() {
                     installedApps = loadLaunchableApps(packageManager)
                     FirewallRuntime.rules = bundle.firewallRules
                     FirewallRuntime.blockedPackages = bundle.appRules.filter { it.networkBlocked }.map { it.packageName }.toSet()
+
+                LaunchedEffect(Unit) {
+                    bundle = policyStorage.load()
+                    FirewallRuntime.rules = bundle.firewallRules
                     val record = secureStore.getPasswordRecord()
                     val passwordRequired = PasswordPolicyEvaluator.isPasswordRequired(
                         bundle.passwordPolicy,
@@ -90,6 +94,9 @@ class MainActivity : ComponentActivity() {
                             bundle = it
                             FirewallRuntime.rules = it.firewallRules
                             FirewallRuntime.blockedPackages = it.appRules.filter { rule -> rule.networkBlocked }.map { rule -> rule.packageName }.toSet()
+                        onBundleChange = {
+                            bundle = it
+                            FirewallRuntime.rules = it.firewallRules
                             policyStorage.save(it)
                         },
                         policyStorage = policyStorage,
