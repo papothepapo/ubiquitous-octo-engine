@@ -1,0 +1,14 @@
+[
+  {
+    "timestamp": 1731000000000,
+    "actor": "admin",
+    "action": "SUSPEND_PACKAGE",
+    "details": "com.video.app suspended"
+  },
+  {
+    "timestamp": 1731003600000,
+    "actor": "admin",
+    "action": "ADD_FIREWALL_RULE",
+    "details": "Blocked *.example.com globally"
+  }
+]
