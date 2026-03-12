@@ -1,16 +1,44 @@
 package com.popstar.dpc.vpn
 
+import java.nio.ByteBuffer
+
 object PacketParsers {
+    data class ConnectionMetadata(
+        val protocol: Int,
+        val sourceIp: Int,
+        val destIp: Int,
+        val sourcePort: Int,
+        val destPort: Int,
+        val transportOffset: Int
+    )
+
+    fun extractConnectionMetadata(packet: ByteArray, length: Int): ConnectionMetadata? {
+        val ipv4 = ipv4(packet, length) ?: return null
+        val protocol = ipv4.protocol
+        if (protocol != 6 && protocol != 17) return null
+
+        val sourceIp = ByteBuffer.wrap(packet, 12, 4).int
+        val destIp = ByteBuffer.wrap(packet, 16, 4).int
+        val sourcePort = readU16(packet, ipv4.transportOffset)
+        val destPort = readU16(packet, ipv4.transportOffset + 2)
+
+        return ConnectionMetadata(
+            protocol = protocol,
+            sourceIp = sourceIp,
+            destIp = destIp,
+            sourcePort = sourcePort,
+            destPort = destPort,
+            transportOffset = ipv4.transportOffset
+        )
+    }
+
     fun extractDnsQueryHost(packet: ByteArray, length: Int): String? {
         if (length < 28) return null
-        val ipv4 = ipv4(packet, length) ?: return null
-        if (ipv4.protocol != 17) return null // UDP only
+        val meta = extractConnectionMetadata(packet, length) ?: return null
+        if (meta.protocol != 17) return null
+        if (meta.sourcePort != 53 && meta.destPort != 53) return null
 
-        val srcPort = readU16(packet, ipv4.transportOffset)
-        val dstPort = readU16(packet, ipv4.transportOffset + 2)
-        if (srcPort != 53 && dstPort != 53) return null
-
-        val dnsStart = ipv4.transportOffset + 8
+        val dnsStart = meta.transportOffset + 8
         if (length < dnsStart + 12) return null
         val qdCount = readU16(packet, dnsStart + 4)
         if (qdCount <= 0) return null
@@ -19,63 +47,76 @@ object PacketParsers {
         val labels = mutableListOf<String>()
         while (index < length) {
             val size = packet[index].toInt() and 0xFF
-            if (size == 0) break
-            if (size > 63 || index + size >= length) return null
-            labels.add(packet.copyOfRange(index + 1, index + 1 + size).toString(Charsets.US_ASCII))
-            index += 1 + size
+            if (size == 0) {
+                return if (labels.isEmpty()) null else labels.joinToString(".").lowercase()
+            }
+            index += 1
+            if (index + size > length) return null
+            labels += packet.copyOfRange(index, index + size).toString(Charsets.US_ASCII)
+            index += size
         }
-        if (labels.isEmpty()) return null
-        return labels.joinToString(".").lowercase()
+        return null
     }
 
     fun extractTlsSniHost(packet: ByteArray, length: Int): String? {
+        if (length < 40) return null
         val ipv4 = ipv4(packet, length) ?: return null
         if (ipv4.protocol != 6) return null // TCP only
 
-        val srcPort = readU16(packet, ipv4.transportOffset)
-        val dstPort = readU16(packet, ipv4.transportOffset + 2)
+        val tcpStart = ipv4.transportOffset
+        val srcPort = readU16(packet, tcpStart)
+        val dstPort = readU16(packet, tcpStart + 2)
         if (srcPort != 443 && dstPort != 443) return null
 
-        val dataOffsetWords = (packet[ipv4.transportOffset + 12].toInt() ushr 4) and 0x0F
-        val tcpHeaderLength = dataOffsetWords * 4
-        val payloadOffset = ipv4.transportOffset + tcpHeaderLength
-        if (payloadOffset + 5 >= length) return null
+        val dataOffset = ((packet[tcpStart + 12].toInt() ushr 4) and 0x0F) * 4
+        val tlsStart = tcpStart + dataOffset
+        if (tlsStart + 5 > length) return null
 
-        // TLS handshake record
-        if ((packet[payloadOffset].toInt() and 0xFF) != 0x16) return null
-        // Client Hello handshake type
-        if ((packet[payloadOffset + 5].toInt() and 0xFF) != 0x01) return null
+        val contentType = packet[tlsStart].toInt() and 0xFF
+        if (contentType != 0x16) return null
+        val recordLen = readU16(packet, tlsStart + 3)
+        if (tlsStart + 5 + recordLen > length) return null
 
-        var idx = payloadOffset + 9 // handshake header + version
-        idx += 32 // random
-        if (idx >= length) return null
+        val hsType = packet[tlsStart + 5].toInt() and 0xFF
+        if (hsType != 0x01) return null // client hello
 
+        val hsLen = ((packet[tlsStart + 6].toInt() and 0xFF) shl 16) or
+            ((packet[tlsStart + 7].toInt() and 0xFF) shl 8) or
+            (packet[tlsStart + 8].toInt() and 0xFF)
+        var idx = tlsStart + 9
+        val hsEnd = idx + hsLen
+        if (hsEnd > length) return null
+
+        idx += 2 + 32 // version + random
+        if (idx >= hsEnd) return null
         val sessionIdLen = packet[idx].toInt() and 0xFF
         idx += 1 + sessionIdLen
-        if (idx + 2 >= length) return null
+        if (idx + 2 > hsEnd) return null
 
-        val cipherSuitesLen = readU16(packet, idx)
-        idx += 2 + cipherSuitesLen
-        if (idx >= length) return null
+        val cipherLen = readU16(packet, idx)
+        idx += 2 + cipherLen
+        if (idx >= hsEnd) return null
 
-        val compressionLen = packet[idx].toInt() and 0xFF
-        idx += 1 + compressionLen
-        if (idx + 2 >= length) return null
+        val compLen = packet[idx].toInt() and 0xFF
+        idx += 1 + compLen
+        if (idx + 2 > hsEnd) return null
 
-        val extensionsLen = readU16(packet, idx)
+        val extLen = readU16(packet, idx)
         idx += 2
-        val extEnd = (idx + extensionsLen).coerceAtMost(length)
+        val extEnd = idx + extLen
+        if (extEnd > hsEnd) return null
 
         while (idx + 4 <= extEnd) {
             val extType = readU16(packet, idx)
-            val extLen = readU16(packet, idx + 2)
+            val extSize = readU16(packet, idx + 2)
             idx += 4
-            if (idx + extLen > extEnd) return null
-            if (extType == 0x0000) { // server_name
-                if (extLen < 5) return null
+            if (idx + extSize > extEnd) return null
+            if (extType == 0x0000) {
+                if (idx + 2 > extEnd) return null
                 val listLen = readU16(packet, idx)
                 var listIdx = idx + 2
-                val listEnd = (listIdx + listLen).coerceAtMost(idx + extLen)
+                val listEnd = listIdx + listLen
+                if (listEnd > extEnd) return null
                 while (listIdx + 3 <= listEnd) {
                     val nameType = packet[listIdx].toInt() and 0xFF
                     val nameLen = readU16(packet, listIdx + 1)
@@ -89,7 +130,7 @@ object PacketParsers {
                     listIdx += nameLen
                 }
             }
-            idx += extLen
+            idx += extSize
         }
         return null
     }

@@ -20,6 +20,23 @@ class PacketParsersTest {
         assertEquals("video.example.com", host)
     }
 
+
+    @Test
+    fun extractsConnectionMetadataForUdp() {
+        val packet = buildDnsQueryPacket("ads.example.com")
+        val metadata = PacketParsers.extractConnectionMetadata(packet, packet.size)
+        assertEquals(17, metadata?.protocol)
+        assertEquals(53, metadata?.destPort)
+    }
+
+    @Test
+    fun extractsConnectionMetadataForTcp() {
+        val packet = buildTlsClientHelloPacket("video.example.com")
+        val metadata = PacketParsers.extractConnectionMetadata(packet, packet.size)
+        assertEquals(6, metadata?.protocol)
+        assertEquals(443, metadata?.destPort)
+    }
+
     @Test
     fun returnsNullForNonDnsPacket() {
         val packet = ByteArray(40)

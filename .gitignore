@@ -11,3 +11,6 @@ app/build/
 
 *.jks
 *.keystore
+
+# Repo policy: do not commit wrapper binaries
+gradle/wrapper/gradle-wrapper.jar
