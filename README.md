@@ -8,8 +8,7 @@ Popstar DPC is a production-focused Android **Device Policy Controller (DPC)** w
 - First-run password setup gate and launch unlock enforcement when policy requires it.
 - Bottom navigation with Device Control, Firewall, and Settings tabs.
 - Device Control now includes launchable-app inventory, search, bulk selection, and app rule toggles (block/suspend/network).
-- On-device `VpnService` with DNS + TLS SNI parsing, DNS forward/reply for allowed DNS traffic, and blocked-attempt logging (full general transport forwarder still pending).
-- On-device `VpnService` with DNS + TLS SNI parsing and local blocked-attempt logging (full transport forwarder still pending).
+- On-device `VpnService` with app-level packet owner checks, DNS + TLS SNI host matching, DNS/UDP forwarding for allowed traffic, and blocked-attempt logging (full TCP stream forwarder still pending).
 - Policy bundle model with encrypted export/import-ready storage.
 - Export/import encrypted policy files via Settings file picker flow.
 - Audit log model and retention/export hooks.
