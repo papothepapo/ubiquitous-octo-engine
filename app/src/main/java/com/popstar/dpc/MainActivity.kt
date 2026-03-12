@@ -1,6 +1,7 @@
 package com.popstar.dpc
 
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -40,6 +41,13 @@ class MainActivity : ComponentActivity() {
 
                 var bundle by remember { mutableStateOf(PolicyBundle()) }
                 var authState by remember { mutableStateOf(AuthState.LOADING) }
+                var installedApps by remember { mutableStateOf<List<InstalledAppInfo>>(emptyList()) }
+
+                LaunchedEffect(Unit) {
+                    bundle = policyStorage.load()
+                    installedApps = loadLaunchableApps(packageManager)
+                    FirewallRuntime.rules = bundle.firewallRules
+                    FirewallRuntime.blockedPackages = bundle.appRules.filter { it.networkBlocked }.map { it.packageName }.toSet()
 
                 LaunchedEffect(Unit) {
                     bundle = policyStorage.load()
@@ -81,6 +89,11 @@ class MainActivity : ComponentActivity() {
 
                     AuthState.UNLOCKED -> MainTabs(
                         bundle = bundle,
+                        installedApps = installedApps,
+                        onBundleChange = {
+                            bundle = it
+                            FirewallRuntime.rules = it.firewallRules
+                            FirewallRuntime.blockedPackages = it.appRules.filter { rule -> rule.networkBlocked }.map { rule -> rule.packageName }.toSet()
                         onBundleChange = {
                             bundle = it
                             FirewallRuntime.rules = it.firewallRules
@@ -111,6 +124,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun MainTabs(
     bundle: PolicyBundle,
+    installedApps: List<InstalledAppInfo>,
     onBundleChange: (PolicyBundle) -> Unit,
     policyStorage: PolicyStorage,
     onApplyPolicies: () -> String?,
@@ -177,6 +191,9 @@ private fun MainTabs(
                 DeviceControlScreen(
                     restrictionPolicy = bundle.restrictionPolicy,
                     enforcementMode = bundle.passwordPolicy.mode,
+                    installedApps = installedApps,
+                    appRules = bundle.appRules,
+                    onAppRulesChanged = { onBundleChange(bundle.copy(appRules = it)) },
                     onRestrictionChanged = { onBundleChange(bundle.copy(restrictionPolicy = it)) },
                     onEnforcementModeChanged = {
                         onBundleChange(
@@ -222,4 +239,17 @@ private fun MainTabs(
             }
         }
     }
+}
+
+private fun loadLaunchableApps(pm: PackageManager): List<InstalledAppInfo> {
+    val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+    return pm.queryIntentActivities(intent, 0)
+        .map {
+            InstalledAppInfo(
+                packageName = it.activityInfo.packageName,
+                label = it.loadLabel(pm).toString()
+            )
+        }
+        .distinctBy { it.packageName }
+        .sortedBy { it.label.lowercase() }
 }

@@ -10,6 +10,11 @@
 - [x] Unit test coverage for core policy logic.
 
 ## P1 (hardening next)
+- [~] Launchable app inventory + search + bulk select + app rule toggles implemented; deeper package action UX polish pending.
+- [~] DPM restrictions expanded with additional safe restrictions + error reporting; OEM/API matrix still pending.
+- [~] VPN DNS + TLS SNI parsing, DNS forward/reply path, and blocked-event logging implemented; full general packet forwarder/QUIC handling still pending.
+- [~] Foreground VPN notification + stop action + revoke handling implemented; advanced reliability tuning still pending.
+- [x] Encrypted policy import/export UX with file picker implemented.
 - [ ] Full app inventory with bulk-select and real package actions.
 - [~] DPM restrictions expanded with additional safe restrictions + error reporting; OEM/API matrix still pending.
 - [~] VPN DNS + TLS SNI parsing and blocked-event logging implemented; full packet forwarder/QUIC handling still pending.

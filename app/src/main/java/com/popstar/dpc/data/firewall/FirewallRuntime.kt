@@ -7,6 +7,9 @@ object FirewallRuntime {
     @Volatile
     var rules: List<FirewallRule> = emptyList()
 
+    @Volatile
+    var blockedPackages: Set<String> = emptySet()
+
     private val blockedEvents = CopyOnWriteArrayList<String>()
 
     fun logBlocked(event: String) {
