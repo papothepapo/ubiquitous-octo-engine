@@ -1,6 +1,6 @@
 # Popstar DPC
 
-Popstar DPC is a production-focused Android **Device Policy Controller (DPC)** with a local VPN firewall engine. It is designed for enterprise/private distribution where the app is provisioned as a device owner and manages app restrictions, system controls, and network policy.
+Popstar DPC is a production-focused Android **Device Policy Controller (DPC)** with a local VPN firewall engine.
 
 ## Features
 - Device owner provisioning notes and admin receiver integration.
@@ -23,15 +23,13 @@ gradle testDebugUnitTest
 
 ## Install
 ```bash
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb install -t app/build/outputs/apk/debug/app-debug.apk
 ```
 
 ## Device owner provisioning (test device wipe required)
 ```bash
 adb shell dpm set-device-owner com.popstar.dpc/.admin.PopstarDeviceAdminReceiver
 ```
-
-If OEM policy blocks ADB provisioning, use QR/NFC/zero-touch provisioning per enterprise enrollment process.
 
 ## Release signing
 1. Generate release key:
@@ -57,21 +55,3 @@ If OEM policy blocks ADB provisioning, use QR/NFC/zero-touch provisioning per en
 - Release notes: `docs/release-notes.md`
 - Sample encrypted policy: `artifacts/sample-policy.enc.json`
 - Sample audit log: `artifacts/final-audit-log.json`
-
-
-## Build debug APK with GitHub CI/CD (step-by-step)
-1. Create `.github/workflows/build-debug-apk.yml` with a workflow that checks out code, sets up JDK 17 + Android SDK, runs unit tests, builds `assembleDebug`, and uploads `app-debug.apk` as an artifact.
-   - This repository workflow uses `gradle` in CI (instead of `./gradlew`) so it does not depend on a checked-in `gradle-wrapper.jar`.
-2. Commit and push your branch to GitHub.
-3. Open **Actions** in GitHub and run **Build Debug APK** manually via **Run workflow** (or let it run automatically on push/PR).
-4. Wait for the workflow to finish successfully.
-5. Open the workflow run and download the `app-debug-apk` artifact.
-6. Unzip the artifact and install the APK:
-   ```bash
-   adb install -r app-debug.apk
-   ```
-
-This repository already includes the workflow at `.github/workflows/build-debug-apk.yml`, so you can use these steps immediately.
-
-## Distribution guidance
-For Play and enterprise compliance use managed Google Play private app or EMM deployment. DPC + VPN permissions are sensitive and intended for enterprise/admin-controlled deployments.
