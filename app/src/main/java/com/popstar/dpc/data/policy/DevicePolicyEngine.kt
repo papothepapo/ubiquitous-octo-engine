@@ -29,23 +29,34 @@ class DevicePolicyEngine(private val context: Context) {
         applyRestriction(UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES, policy.appResetBlocked, failures)
         applyRestriction(UserManager.DISALLOW_USB_FILE_TRANSFER, policy.mobileDataBlocked, failures)
 
-        if (!setForceVpn(policy.forceVpn)) {
-            failures.add("Failed to configure always-on VPN")
-        }
         return failures
     }
 
-    fun applySuspensionRules(rules: List<AppRule>): List<String> {
+    fun applyAppControlRules(rules: List<AppRule>): List<String> {
         if (!isAdminActive()) return listOf("Device admin is not active")
         val failures = mutableListOf<String>()
-        val suspend = rules.filter { it.suspended }.map { it.packageName }.toTypedArray()
-        val unsuspend = rules.filter { !it.suspended }.map { it.packageName }.toTypedArray()
-        runCatching {
-            if (suspend.isNotEmpty()) dpm.setPackagesSuspended(admin, suspend, true)
-            if (unsuspend.isNotEmpty()) dpm.setPackagesSuspended(admin, unsuspend, false)
-        }.onFailure {
-            failures.add("Package suspension update failed: ${it.message}")
+
+        rules.forEach { rule ->
+            if (rule.packageName == context.packageName) {
+                if (rule.blocked || rule.suspended) {
+                    failures.add("Skipping control of host DPC app: ${rule.packageName}")
+                }
+                return@forEach
+            }
+
+            runCatching {
+                dpm.setApplicationHidden(admin, rule.packageName, rule.blocked)
+            }.onFailure {
+                failures.add("Block ${rule.packageName} failed: ${it.message}")
+            }
+
+            runCatching {
+                dpm.setPackagesSuspended(admin, arrayOf(rule.packageName), rule.suspended)
+            }.onFailure {
+                failures.add("Suspend ${rule.packageName} failed: ${it.message}")
+            }
         }
+
         return failures
     }
 
@@ -59,14 +70,4 @@ class DevicePolicyEngine(private val context: Context) {
         }
     }
 
-    private fun setForceVpn(enabled: Boolean): Boolean {
-        return runCatching {
-            if (enabled) {
-                dpm.setAlwaysOnVpnPackage(admin, context.packageName, true)
-            } else {
-                dpm.setAlwaysOnVpnPackage(admin, null, false)
-            }
-            true
-        }.getOrElse { false }
-    }
 }
