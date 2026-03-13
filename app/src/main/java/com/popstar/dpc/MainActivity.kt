@@ -3,6 +3,7 @@ package com.popstar.dpc
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.net.VpnService
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -125,7 +126,7 @@ class MainActivity : ComponentActivity() {
                             val restrictionFailures =
                                 devicePolicyEngine.applyRestrictions(bundle.restrictionPolicy)
                             val suspensionFailures =
-                                devicePolicyEngine.applySuspensionRules(bundle.appRules)
+                                devicePolicyEngine.applyAppControlRules(bundle.appRules)
                             val failures = restrictionFailures + suspensionFailures
                             if (failures.isEmpty()) "Policies applied" else failures.joinToString("; ")
                         },
@@ -156,6 +157,7 @@ private fun MainTabs(
     val context = LocalContext.current
     var importExportStatus by remember { mutableStateOf<String?>(null) }
     var enforcementStatus by remember { mutableStateOf<String?>(null) }
+    var vpnStatus by remember { mutableStateOf<String?>(null) }
 
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
@@ -185,6 +187,17 @@ private fun MainTabs(
             }
         }.onFailure {
             importExportStatus = "Import failed: ${it.message}"
+        }
+    }
+
+
+    val vpnPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        val prepareIntent = VpnService.prepare(context)
+        if (prepareIntent == null) {
+            context.startService(com.popstar.dpc.vpn.PopstarVpnService.startIntent(context))
+            vpnStatus = "VPN started"
+        } else {
+            vpnStatus = "VPN permission was not granted"
         }
     }
 
@@ -252,14 +265,42 @@ private fun MainTabs(
             composable("settings") {
                 SettingsScreen(
                     onDisablePassword = onDisablePassword,
+                    onSetPassword = { password, mode, days ->
+                        if (mode == PasswordEnforcementMode.DISABLED) {
+                            onDisablePassword()
+                            "Password disabled"
+                        } else {
+                            val record = PasswordHasher.create(password)
+                            val updated = bundle.copy(
+                                passwordPolicy = bundle.passwordPolicy.copy(
+                                    mode = mode,
+                                    timedDays = days,
+                                    enabledAtEpochMs = System.currentTimeMillis()
+                                )
+                            )
+                            onBundleChange(updated)
+                            SecureStore(context).savePasswordRecord(record)
+                            "Password policy saved"
+                        }
+                    },
                     importExportStatus = importExportStatus,
-                    enforcementStatus = enforcementStatus,
+                    enforcementStatus = listOfNotNull(enforcementStatus, vpnStatus).joinToString(" | ").ifBlank { null },
                     onExport = { exportLauncher.launch("popstar-policy.enc.json") },
                     onImport = {
                         importLauncher.launch(arrayOf("application/json", "text/plain"))
                     },
                     onStartVpn = {
-                        context.startService(Intent(context, com.popstar.dpc.vpn.PopstarVpnService::class.java))
+                        val prepareIntent = VpnService.prepare(context)
+                        if (prepareIntent != null) {
+                            vpnPermissionLauncher.launch(prepareIntent)
+                        } else {
+                            context.startService(com.popstar.dpc.vpn.PopstarVpnService.startIntent(context))
+                            vpnStatus = "VPN started"
+                        }
+                    },
+                    onStopVpn = {
+                        context.startService(com.popstar.dpc.vpn.PopstarVpnService.stopIntent(context))
+                        vpnStatus = "VPN stopped"
                     }
                 )
             }

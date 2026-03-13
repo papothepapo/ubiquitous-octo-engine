@@ -26,7 +26,6 @@ data class RestrictionPolicy(
     val wifiBlocked: Boolean = false,
     val smsBlocked: Boolean = false,
     val mobileDataBlocked: Boolean = false,
-    val forceVpn: Boolean = false,
     val deviceResetBlocked: Boolean = false,
     val networkResetBlocked: Boolean = false,
     val appResetBlocked: Boolean = false

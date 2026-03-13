@@ -110,8 +110,7 @@ fun DeviceControlScreen(
                                 }
                             }
                         }
-                        Text("App inventory wiring is pending for full package manager integration.")
-                    }
+                        }
                 }
             }
         }
@@ -119,9 +118,6 @@ fun DeviceControlScreen(
             ElevatedCard {
                 Column(Modifier.fillMaxWidth().padding(12.dp)) {
                     Text("System restriction toggles", style = MaterialTheme.typography.titleMedium)
-                    SwitchRow("Force VPN usage", restrictionPolicy.forceVpn) {
-                        onRestrictionChanged(restrictionPolicy.copy(forceVpn = it))
-                    }
                     SwitchRow("Block Wi-Fi", restrictionPolicy.wifiBlocked) {
                         onRestrictionChanged(restrictionPolicy.copy(wifiBlocked = it))
                     }

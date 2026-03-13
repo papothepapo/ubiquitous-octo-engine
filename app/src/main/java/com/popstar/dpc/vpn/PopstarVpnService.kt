@@ -231,5 +231,10 @@ class PopstarVpnService : VpnService() {
         private const val NOTIFICATION_ID = 7
         private const val ACTION_STOP = "com.popstar.dpc.vpn.STOP"
         private const val DNS_UPSTREAM = "1.1.1.1"
+
+        fun startIntent(context: android.content.Context): Intent = Intent(context, PopstarVpnService::class.java)
+
+        fun stopIntent(context: android.content.Context): Intent =
+            Intent(context, PopstarVpnService::class.java).apply { action = ACTION_STOP }
     }
 }
