@@ -148,6 +148,15 @@ fun DeviceControlScreen(
                     SwitchRow("Block developer options", restrictionPolicy.developerOptionsBlocked) {
                         onRestrictionChanged(restrictionPolicy.copy(developerOptionsBlocked = it))
                     }
+                    SwitchRow("Block app installation", restrictionPolicy.appInstallBlocked) {
+                        onRestrictionChanged(restrictionPolicy.copy(appInstallBlocked = it))
+                    }
+                    SwitchRow("Block safe boot", restrictionPolicy.safeBootBlocked) {
+                        onRestrictionChanged(restrictionPolicy.copy(safeBootBlocked = it))
+                    }
+                    SwitchRow("Block adding accounts", restrictionPolicy.accountManagementBlocked) {
+                        onRestrictionChanged(restrictionPolicy.copy(accountManagementBlocked = it))
+                    }
                     Button(onClick = onApplyPolicies) { Text("Apply on device") }
                 }
             }
