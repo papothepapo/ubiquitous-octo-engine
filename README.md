@@ -60,7 +60,8 @@ If OEM policy blocks ADB provisioning, use QR/NFC/zero-touch provisioning per en
 
 
 ## Build debug APK with GitHub CI/CD (step-by-step)
-1. Create `.github/workflows/build-debug-apk.yml` with a workflow that checks out code, sets up JDK 17, runs unit tests, builds `assembleDebug`, and uploads `app-debug.apk` as an artifact.
+1. Create `.github/workflows/build-debug-apk.yml` with a workflow that checks out code, sets up JDK 17 + Android SDK, runs unit tests, builds `assembleDebug`, and uploads `app-debug.apk` as an artifact.
+   - This repository workflow uses `gradle` in CI (instead of `./gradlew`) so it does not depend on a checked-in `gradle-wrapper.jar`.
 2. Commit and push your branch to GitHub.
 3. Open **Actions** in GitHub and run **Build Debug APK** manually via **Run workflow** (or let it run automatically on push/PR).
 4. Wait for the workflow to finish successfully.
