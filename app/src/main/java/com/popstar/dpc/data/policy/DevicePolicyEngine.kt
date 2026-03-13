@@ -22,12 +22,20 @@ class DevicePolicyEngine(private val context: Context) {
         applyRestriction(UserManager.DISALLOW_FACTORY_RESET, policy.deviceResetBlocked, failures)
         applyRestriction(UserManager.DISALLOW_NETWORK_RESET, policy.networkResetBlocked, failures)
         applyRestriction(UserManager.DISALLOW_APPS_CONTROL, policy.appResetBlocked, failures)
+        applyRestriction(UserManager.DISALLOW_DEBUGGING_FEATURES, policy.developerOptionsBlocked, failures)
 
         // Additional hardening commonly used on managed devices.
         applyRestriction(UserManager.DISALLOW_SAFE_BOOT, policy.deviceResetBlocked, failures)
         applyRestriction(UserManager.DISALLOW_ADD_USER, policy.deviceResetBlocked, failures)
         applyRestriction(UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES, policy.appResetBlocked, failures)
         applyRestriction(UserManager.DISALLOW_USB_FILE_TRANSFER, policy.mobileDataBlocked, failures)
+
+        runCatching {
+            dpm.setShortSupportMessage(admin, policy.supportShortMessage.ifBlank { null })
+            dpm.setLongSupportMessage(admin, policy.supportLongMessage.ifBlank { null })
+        }.onFailure {
+            failures.add("Setting support messages failed: ${it.message}")
+        }
 
         return failures
     }
@@ -59,6 +67,11 @@ class DevicePolicyEngine(private val context: Context) {
 
         return failures
     }
+
+
+    fun isDeviceOwnerApp(): Boolean = dpm.isDeviceOwnerApp(context.packageName)
+
+    fun isProfileOwnerApp(): Boolean = dpm.isProfileOwnerApp(context.packageName)
 
     fun isAdminActive(): Boolean = dpm.isAdminActive(admin)
 

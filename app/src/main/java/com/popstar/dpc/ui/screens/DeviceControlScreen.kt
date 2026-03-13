@@ -1,15 +1,26 @@
 package com.popstar.dpc.ui.screens
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material3.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.popstar.dpc.data.model.AppRule
-import com.popstar.dpc.data.model.PasswordEnforcementMode
 import com.popstar.dpc.data.model.RestrictionPolicy
 
 /** Launchable app metadata for app-control UI. */
@@ -18,12 +29,10 @@ data class InstalledAppInfo(val packageName: String, val label: String)
 @Composable
 fun DeviceControlScreen(
     restrictionPolicy: RestrictionPolicy,
-    enforcementMode: PasswordEnforcementMode,
     installedApps: List<InstalledAppInfo>,
     appRules: List<AppRule>,
     onAppRulesChanged: (List<AppRule>) -> Unit,
     onRestrictionChanged: (RestrictionPolicy) -> Unit,
-    onEnforcementModeChanged: (PasswordEnforcementMode) -> Unit,
     onApplyPolicies: () -> Unit
 ) {
     val expanded = remember { mutableStateOf(false) }
@@ -110,7 +119,7 @@ fun DeviceControlScreen(
                                 }
                             }
                         }
-                        }
+                    }
                 }
             }
         }
@@ -136,32 +145,10 @@ fun DeviceControlScreen(
                     SwitchRow("Block app reset", restrictionPolicy.appResetBlocked) {
                         onRestrictionChanged(restrictionPolicy.copy(appResetBlocked = it))
                     }
-                    Button(onClick = onApplyPolicies) { Text("Apply on device") }
-                }
-            }
-        }
-        item {
-            ElevatedCard {
-                Column(Modifier.fillMaxWidth().padding(12.dp)) {
-                    Text("Password management", style = MaterialTheme.typography.titleMedium)
-                    Text("Enforcement mode")
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(
-                            selected = enforcementMode == PasswordEnforcementMode.PERSISTENT,
-                            onClick = { onEnforcementModeChanged(PasswordEnforcementMode.PERSISTENT) },
-                            label = { Text("Persistent") }
-                        )
-                        FilterChip(
-                            selected = enforcementMode == PasswordEnforcementMode.TIMED,
-                            onClick = { onEnforcementModeChanged(PasswordEnforcementMode.TIMED) },
-                            label = { Text("Timed") }
-                        )
-                        FilterChip(
-                            selected = enforcementMode == PasswordEnforcementMode.DISABLED,
-                            onClick = { onEnforcementModeChanged(PasswordEnforcementMode.DISABLED) },
-                            label = { Text("Disabled") }
-                        )
+                    SwitchRow("Block developer options", restrictionPolicy.developerOptionsBlocked) {
+                        onRestrictionChanged(restrictionPolicy.copy(developerOptionsBlocked = it))
                     }
+                    Button(onClick = onApplyPolicies) { Text("Apply on device") }
                 }
             }
         }

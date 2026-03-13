@@ -18,10 +18,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.popstar.dpc.data.model.AppThemeMode
 import com.popstar.dpc.data.model.PasswordEnforcementMode
 
 @Composable
 fun SettingsScreen(
+    currentThemeMode: AppThemeMode,
+    onThemeModeChanged: (AppThemeMode) -> Unit,
+    deviceOwnerStatus: String,
+    adbDeviceOwnerCommand: String,
+    onCopyAdbCommand: () -> Unit,
+    supportShortMessage: String,
+    supportLongMessage: String,
+    onSupportMessagesChanged: (String, String) -> Unit,
     onDisablePassword: () -> Unit,
     onSetPassword: (password: String, mode: PasswordEnforcementMode, days: Int) -> String?,
     importExportStatus: String?,
@@ -36,13 +45,57 @@ fun SettingsScreen(
     val mode = remember { mutableStateOf(PasswordEnforcementMode.PERSISTENT) }
     val days = remember { mutableStateOf("7") }
     val passwordStatus = remember { mutableStateOf<String?>(null) }
+    val shortMessageState = remember(supportShortMessage) { mutableStateOf(supportShortMessage) }
+    val longMessageState = remember(supportLongMessage) { mutableStateOf(supportLongMessage) }
 
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             ElevatedCard {
-                Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Theme")
-                    Text("Light / Dark / Auto")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(selected = currentThemeMode == AppThemeMode.SYSTEM, onClick = { onThemeModeChanged(AppThemeMode.SYSTEM) }, label = { Text("Auto") })
+                        FilterChip(selected = currentThemeMode == AppThemeMode.LIGHT, onClick = { onThemeModeChanged(AppThemeMode.LIGHT) }, label = { Text("Light") })
+                        FilterChip(selected = currentThemeMode == AppThemeMode.DARK, onClick = { onThemeModeChanged(AppThemeMode.DARK) }, label = { Text("Dark") })
+                    }
+                }
+            }
+        }
+        item {
+            ElevatedCard {
+                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Device owner")
+                    Text(deviceOwnerStatus)
+                    OutlinedTextField(
+                        value = adbDeviceOwnerCommand,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("ADB command") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Button(onClick = onCopyAdbCommand) { Text("Copy command") }
+                }
+            }
+        }
+        item {
+            ElevatedCard {
+                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Blocked-by-policy support messages")
+                    OutlinedTextField(
+                        value = shortMessageState.value,
+                        onValueChange = { shortMessageState.value = it },
+                        label = { Text("Short message") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = longMessageState.value,
+                        onValueChange = { longMessageState.value = it },
+                        label = { Text("Long message") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Button(onClick = { onSupportMessagesChanged(shortMessageState.value, longMessageState.value) }) {
+                        Text("Save support messages")
+                    }
                 }
             }
         }
@@ -88,7 +141,12 @@ fun SettingsScreen(
                             }
                             passwordStatus.value = onSetPassword(password.value, mode.value, days.value.toIntOrNull() ?: 0)
                         }) { Text("Save password policy") }
-                        Button(onClick = onDisablePassword) { Text("Disable password") }
+                        Button(onClick = {
+                            password.value = ""
+                            confirm.value = ""
+                            passwordStatus.value = "Password disabled"
+                            onDisablePassword()
+                        }) { Text("Disable password") }
                     }
                     passwordStatus.value?.let { Text(it) }
                 }
