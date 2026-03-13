@@ -58,5 +58,20 @@ If OEM policy blocks ADB provisioning, use QR/NFC/zero-touch provisioning per en
 - Sample encrypted policy: `artifacts/sample-policy.enc.json`
 - Sample audit log: `artifacts/final-audit-log.json`
 
+
+## Build debug APK with GitHub CI/CD (step-by-step)
+1. Create `.github/workflows/build-debug-apk.yml` with a workflow that checks out code, sets up JDK 17 + Android SDK, runs unit tests, builds `assembleDebug`, and uploads `app-debug.apk` as an artifact.
+   - This repository workflow uses `gradle` in CI (instead of `./gradlew`) so it does not depend on a checked-in `gradle-wrapper.jar`.
+2. Commit and push your branch to GitHub.
+3. Open **Actions** in GitHub and run **Build Debug APK** manually via **Run workflow** (or let it run automatically on push/PR).
+4. Wait for the workflow to finish successfully.
+5. Open the workflow run and download the `app-debug-apk` artifact.
+6. Unzip the artifact and install the APK:
+   ```bash
+   adb install -r app-debug.apk
+   ```
+
+This repository already includes the workflow at `.github/workflows/build-debug-apk.yml`, so you can use these steps immediately.
+
 ## Distribution guidance
 For Play and enterprise compliance use managed Google Play private app or EMM deployment. DPC + VPN permissions are sensitive and intended for enterprise/admin-controlled deployments.
