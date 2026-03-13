@@ -25,9 +25,11 @@ class DevicePolicyEngine(private val context: Context) {
         applyRestriction(UserManager.DISALLOW_DEBUGGING_FEATURES, policy.developerOptionsBlocked, failures)
 
         // Additional hardening commonly used on managed devices.
-        applyRestriction(UserManager.DISALLOW_SAFE_BOOT, policy.deviceResetBlocked, failures)
+        applyRestriction(UserManager.DISALLOW_SAFE_BOOT, policy.safeBootBlocked, failures)
         applyRestriction(UserManager.DISALLOW_ADD_USER, policy.deviceResetBlocked, failures)
         applyRestriction(UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES, policy.appResetBlocked, failures)
+        applyRestriction(UserManager.DISALLOW_INSTALL_APPS, policy.appInstallBlocked, failures)
+        applyRestriction(UserManager.DISALLOW_MODIFY_ACCOUNTS, policy.accountManagementBlocked, failures)
         applyRestriction(UserManager.DISALLOW_USB_FILE_TRANSFER, policy.mobileDataBlocked, failures)
 
         runCatching {

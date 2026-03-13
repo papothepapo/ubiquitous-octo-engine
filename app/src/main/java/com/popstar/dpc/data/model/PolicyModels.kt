@@ -33,6 +33,9 @@ data class RestrictionPolicy(
     val networkResetBlocked: Boolean = false,
     val appResetBlocked: Boolean = false,
     val developerOptionsBlocked: Boolean = false,
+    val appInstallBlocked: Boolean = false,
+    val safeBootBlocked: Boolean = false,
+    val accountManagementBlocked: Boolean = false,
     val supportShortMessage: String = "",
     val supportLongMessage: String = ""
 )
