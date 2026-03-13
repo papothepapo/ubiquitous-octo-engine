@@ -6,6 +6,9 @@ import kotlinx.serialization.Serializable
 enum class PasswordEnforcementMode { TIMED, PERSISTENT, DISABLED }
 
 @Serializable
+enum class AppThemeMode { SYSTEM, LIGHT, DARK }
+
+@Serializable
 data class PasswordPolicy(
     val mode: PasswordEnforcementMode = PasswordEnforcementMode.DISABLED,
     val timedDays: Int = 0,
@@ -28,7 +31,10 @@ data class RestrictionPolicy(
     val mobileDataBlocked: Boolean = false,
     val deviceResetBlocked: Boolean = false,
     val networkResetBlocked: Boolean = false,
-    val appResetBlocked: Boolean = false
+    val appResetBlocked: Boolean = false,
+    val developerOptionsBlocked: Boolean = false,
+    val supportShortMessage: String = "",
+    val supportLongMessage: String = ""
 )
 
 @Serializable
@@ -50,6 +56,7 @@ data class AuditLogEntry(
 
 @Serializable
 data class PolicyBundle(
+    val themeMode: AppThemeMode = AppThemeMode.SYSTEM,
     val passwordPolicy: PasswordPolicy = PasswordPolicy(),
     val restrictionPolicy: RestrictionPolicy = RestrictionPolicy(),
     val appRules: List<AppRule> = emptyList(),

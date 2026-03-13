@@ -1,5 +1,7 @@
 package com.popstar.dpc
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -52,14 +54,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            PopstarTheme {
-                val secureStore = remember { SecureStore(this) }
-                val policyStorage = remember { PolicyStorage(secureStore, CryptoManager()) }
-                val devicePolicyEngine = remember { DevicePolicyEngine(this) }
+            val secureStore = remember { SecureStore(this) }
+            val policyStorage = remember { PolicyStorage(secureStore, CryptoManager()) }
+            val devicePolicyEngine = remember { DevicePolicyEngine(this) }
 
-                var bundle by remember { mutableStateOf(PolicyBundle()) }
-                var authState by remember { mutableStateOf(AuthState.LOADING) }
-                var installedApps by remember { mutableStateOf<List<InstalledAppInfo>>(emptyList()) }
+            var bundle by remember { mutableStateOf(PolicyBundle()) }
+            var authState by remember { mutableStateOf(AuthState.LOADING) }
+            var installedApps by remember { mutableStateOf<List<InstalledAppInfo>>(emptyList()) }
+
+            PopstarTheme(themeMode = bundle.themeMode) {
 
                 LaunchedEffect(Unit) {
                     bundle = policyStorage.load()
@@ -122,6 +125,7 @@ class MainActivity : ComponentActivity() {
                             policyStorage.save(it)
                         },
                         policyStorage = policyStorage,
+                        devicePolicyEngine = devicePolicyEngine,
                         onApplyPolicies = {
                             val restrictionFailures =
                                 devicePolicyEngine.applyRestrictions(bundle.restrictionPolicy)
@@ -151,6 +155,7 @@ private fun MainTabs(
     installedApps: List<InstalledAppInfo>,
     onBundleChange: (PolicyBundle) -> Unit,
     policyStorage: PolicyStorage,
+    devicePolicyEngine: DevicePolicyEngine,
     onApplyPolicies: () -> String?,
     onDisablePassword: () -> Unit
 ) {
@@ -229,21 +234,10 @@ private fun MainTabs(
             composable("device") {
                 DeviceControlScreen(
                     restrictionPolicy = bundle.restrictionPolicy,
-                    enforcementMode = bundle.passwordPolicy.mode,
                     installedApps = installedApps,
                     appRules = bundle.appRules,
                     onAppRulesChanged = { onBundleChange(bundle.copy(appRules = it)) },
                     onRestrictionChanged = { onBundleChange(bundle.copy(restrictionPolicy = it)) },
-                    onEnforcementModeChanged = {
-                        onBundleChange(
-                            bundle.copy(
-                                passwordPolicy = bundle.passwordPolicy.copy(
-                                    mode = it,
-                                    enabledAtEpochMs = System.currentTimeMillis()
-                                )
-                            )
-                        )
-                    },
                     onApplyPolicies = {
                         onApplyPolicies()?.let { enforcementStatus = it }
                     }
@@ -264,6 +258,38 @@ private fun MainTabs(
             }
             composable("settings") {
                 SettingsScreen(
+                    currentThemeMode = bundle.themeMode,
+                    onThemeModeChanged = { onBundleChange(bundle.copy(themeMode = it)) },
+                    deviceOwnerStatus = when {
+                        devicePolicyEngine.isDeviceOwnerApp() -> "Device owner active (test mode expected for easy removal/transfer)"
+                        devicePolicyEngine.isProfileOwnerApp() -> "Profile owner active"
+                        devicePolicyEngine.isAdminActive() -> "Device admin active, not device owner"
+                        else -> "No admin ownership active"
+                    },
+                    adbDeviceOwnerCommand = "adb shell dpm set-device-owner --device-owner-only com.popstar.dpc/.admin.PopstarDeviceAdminReceiver",
+                    onCopyAdbCommand = {
+                        val clipboard = context.getSystemService(ClipboardManager::class.java)
+                        clipboard?.setPrimaryClip(
+                            ClipData.newPlainText(
+                                "dpc_set_device_owner",
+                                "adb shell dpm set-device-owner --device-owner-only com.popstar.dpc/.admin.PopstarDeviceAdminReceiver"
+                            )
+                        )
+                        importExportStatus = "ADB command copied"
+                    },
+                    supportShortMessage = bundle.restrictionPolicy.supportShortMessage,
+                    supportLongMessage = bundle.restrictionPolicy.supportLongMessage,
+                    onSupportMessagesChanged = { shortMessage, longMessage ->
+                        onBundleChange(
+                            bundle.copy(
+                                restrictionPolicy = bundle.restrictionPolicy.copy(
+                                    supportShortMessage = shortMessage,
+                                    supportLongMessage = longMessage
+                                )
+                            )
+                        )
+                        importExportStatus = "Support messages saved"
+                    },
                     onDisablePassword = onDisablePassword,
                     onSetPassword = { password, mode, days ->
                         if (mode == PasswordEnforcementMode.DISABLED) {
