@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilterChip
@@ -134,10 +133,7 @@ fun DeviceControlScreen(
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("System restriction toggles", style = MaterialTheme.typography.titleMedium)
                         IconButton(onClick = { togglesExpanded = !togglesExpanded }) {
-                            Icon(
-                                imageVector = if (togglesExpanded) androidx.compose.material.icons.Icons.Default.KeyboardArrowUp else androidx.compose.material.icons.Icons.Default.KeyboardArrowDown,
-                                contentDescription = if (togglesExpanded) "Collapse restriction toggles" else "Expand restriction toggles"
-                            )
+                            Text(if (togglesExpanded) "▲" else "▼")
                         }
                     }
                     if (togglesExpanded) {
