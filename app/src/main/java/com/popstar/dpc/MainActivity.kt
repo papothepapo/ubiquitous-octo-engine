@@ -11,8 +11,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -65,30 +68,31 @@ class MainActivity : ComponentActivity() {
             PopstarTheme(themeMode = bundle.themeMode) {
 
                 LaunchedEffect(Unit) {
-                    bundle = policyStorage.load()
+                    val loadedBundle = policyStorage.load()
+                    bundle = loadedBundle
                     installedApps = loadLaunchableApps(packageManager)
-                    FirewallRuntime.rules = bundle.firewallRules
-                    FirewallRuntime.blockedPackages = bundle.appRules
+                    FirewallRuntime.rules = loadedBundle.firewallRules
+                    FirewallRuntime.blockedPackages = loadedBundle.appRules
                         .filter { it.networkBlocked }
                         .map { it.packageName }
                         .toSet()
-                }
 
-                LaunchedEffect(Unit) {
                     val record = secureStore.getPasswordRecord()
                     val passwordRequired = PasswordPolicyEvaluator.isPasswordRequired(
-                        bundle.passwordPolicy,
+                        loadedBundle.passwordPolicy,
                         System.currentTimeMillis()
                     )
                     authState = when {
-                        record == null && bundle.passwordPolicy.mode != PasswordEnforcementMode.DISABLED -> AuthState.SETUP
+                        record == null && loadedBundle.passwordPolicy.mode != PasswordEnforcementMode.DISABLED -> AuthState.SETUP
                         passwordRequired && record != null -> AuthState.LOCKED
                         else -> AuthState.UNLOCKED
                     }
                 }
 
                 when (authState) {
-                    AuthState.LOADING -> CircularProgressIndicator()
+                    AuthState.LOADING -> Box(Modifier.fillMaxSize().wrapContentSize()) {
+                        CircularProgressIndicator()
+                    }
                     AuthState.SETUP -> SetupPasswordScreen { password, mode, days ->
                         val record = PasswordHasher.create(password)
                         secureStore.savePasswordRecord(record)
@@ -206,8 +210,21 @@ private fun MainTabs(
         }
     }
 
+
+    LaunchedEffect(bundle.vpnAutoStart) {
+        if (bundle.vpnAutoStart) {
+            val prepareIntent = VpnService.prepare(context)
+            if (prepareIntent == null) {
+                context.startService(com.popstar.dpc.vpn.PopstarVpnService.startIntent(context))
+                vpnStatus = "VPN auto-started"
+            } else {
+                vpnStatus = "VPN auto-start pending permission"
+            }
+        }
+    }
+
     val navController = rememberNavController()
-    val items = listOf("device", "firewall", "settings")
+    val items = listOf("device", "vpn", "settings")
 
     Scaffold(
         bottomBar = {
@@ -243,10 +260,24 @@ private fun MainTabs(
                     }
                 )
             }
-            composable("firewall") {
+            composable("vpn") {
                 FirewallScreen(
                     rules = bundle.firewallRules,
-                    blockedEvents = FirewallRuntime.events()
+                    blockedEvents = FirewallRuntime.events(),
+                    vpnStatus = vpnStatus,
+                    onStartVpn = {
+                        val prepareIntent = VpnService.prepare(context)
+                        if (prepareIntent != null) {
+                            vpnPermissionLauncher.launch(prepareIntent)
+                        } else {
+                            context.startService(com.popstar.dpc.vpn.PopstarVpnService.startIntent(context))
+                            vpnStatus = "VPN started"
+                        }
+                    },
+                    onStopVpn = {
+                        context.startService(com.popstar.dpc.vpn.PopstarVpnService.stopIntent(context))
+                        vpnStatus = "VPN stopped"
+                    }
                 ) { pattern ->
                     val next = FirewallRule(
                         id = System.currentTimeMillis().toString(),
@@ -310,23 +341,12 @@ private fun MainTabs(
                         }
                     },
                     importExportStatus = importExportStatus,
-                    enforcementStatus = listOfNotNull(enforcementStatus, vpnStatus).joinToString(" | ").ifBlank { null },
+                    enforcementStatus = enforcementStatus,
+                    vpnAutoStart = bundle.vpnAutoStart,
+                    onVpnAutoStartChanged = { enabled -> onBundleChange(bundle.copy(vpnAutoStart = enabled)) },
                     onExport = { exportLauncher.launch("popstar-policy.enc.json") },
                     onImport = {
                         importLauncher.launch(arrayOf("application/json", "text/plain"))
-                    },
-                    onStartVpn = {
-                        val prepareIntent = VpnService.prepare(context)
-                        if (prepareIntent != null) {
-                            vpnPermissionLauncher.launch(prepareIntent)
-                        } else {
-                            context.startService(com.popstar.dpc.vpn.PopstarVpnService.startIntent(context))
-                            vpnStatus = "VPN started"
-                        }
-                    },
-                    onStopVpn = {
-                        context.startService(com.popstar.dpc.vpn.PopstarVpnService.stopIntent(context))
-                        vpnStatus = "VPN stopped"
                     }
                 )
             }

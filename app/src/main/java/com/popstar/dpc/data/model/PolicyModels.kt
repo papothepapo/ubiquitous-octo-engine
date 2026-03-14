@@ -60,6 +60,7 @@ data class AuditLogEntry(
 @Serializable
 data class PolicyBundle(
     val themeMode: AppThemeMode = AppThemeMode.SYSTEM,
+    val vpnAutoStart: Boolean = false,
     val passwordPolicy: PasswordPolicy = PasswordPolicy(),
     val restrictionPolicy: RestrictionPolicy = RestrictionPolicy(),
     val appRules: List<AppRule> = emptyList(),
