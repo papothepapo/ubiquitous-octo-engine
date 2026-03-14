@@ -24,9 +24,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
 import com.popstar.dpc.data.model.AppRule
 import com.popstar.dpc.data.model.RestrictionPolicy
 
@@ -138,7 +135,7 @@ fun DeviceControlScreen(
                         Text("System restriction toggles", style = MaterialTheme.typography.titleMedium)
                         IconButton(onClick = { togglesExpanded = !togglesExpanded }) {
                             Icon(
-                                imageVector = if (togglesExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                imageVector = if (togglesExpanded) androidx.compose.material.icons.Icons.Default.KeyboardArrowUp else androidx.compose.material.icons.Icons.Default.KeyboardArrowDown,
                                 contentDescription = if (togglesExpanded) "Collapse restriction toggles" else "Expand restriction toggles"
                             )
                         }
