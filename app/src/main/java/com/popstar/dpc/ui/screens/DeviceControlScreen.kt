@@ -8,18 +8,25 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import com.popstar.dpc.data.model.AppRule
 import com.popstar.dpc.data.model.RestrictionPolicy
 
@@ -125,37 +132,48 @@ fun DeviceControlScreen(
         }
         item {
             ElevatedCard {
-                Column(Modifier.fillMaxWidth().padding(12.dp)) {
-                    Text("System restriction toggles", style = MaterialTheme.typography.titleMedium)
-                    SwitchRow("Block Wi-Fi", restrictionPolicy.wifiBlocked) {
-                        onRestrictionChanged(restrictionPolicy.copy(wifiBlocked = it))
+                var togglesExpanded by remember { mutableStateOf(false) }
+                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("System restriction toggles", style = MaterialTheme.typography.titleMedium)
+                        IconButton(onClick = { togglesExpanded = !togglesExpanded }) {
+                            Icon(
+                                imageVector = if (togglesExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                contentDescription = if (togglesExpanded) "Collapse restriction toggles" else "Expand restriction toggles"
+                            )
+                        }
                     }
-                    SwitchRow("Block SMS", restrictionPolicy.smsBlocked) {
-                        onRestrictionChanged(restrictionPolicy.copy(smsBlocked = it))
-                    }
-                    SwitchRow("Block mobile data", restrictionPolicy.mobileDataBlocked) {
-                        onRestrictionChanged(restrictionPolicy.copy(mobileDataBlocked = it))
-                    }
-                    SwitchRow("Block device reset", restrictionPolicy.deviceResetBlocked) {
-                        onRestrictionChanged(restrictionPolicy.copy(deviceResetBlocked = it))
-                    }
-                    SwitchRow("Block network reset", restrictionPolicy.networkResetBlocked) {
-                        onRestrictionChanged(restrictionPolicy.copy(networkResetBlocked = it))
-                    }
-                    SwitchRow("Block app reset", restrictionPolicy.appResetBlocked) {
-                        onRestrictionChanged(restrictionPolicy.copy(appResetBlocked = it))
-                    }
-                    SwitchRow("Block developer options", restrictionPolicy.developerOptionsBlocked) {
-                        onRestrictionChanged(restrictionPolicy.copy(developerOptionsBlocked = it))
-                    }
-                    SwitchRow("Block app installation", restrictionPolicy.appInstallBlocked) {
-                        onRestrictionChanged(restrictionPolicy.copy(appInstallBlocked = it))
-                    }
-                    SwitchRow("Block safe boot", restrictionPolicy.safeBootBlocked) {
-                        onRestrictionChanged(restrictionPolicy.copy(safeBootBlocked = it))
-                    }
-                    SwitchRow("Block adding accounts", restrictionPolicy.accountManagementBlocked) {
-                        onRestrictionChanged(restrictionPolicy.copy(accountManagementBlocked = it))
+                    if (togglesExpanded) {
+                        SwitchRow("Block Wi-Fi", restrictionPolicy.wifiBlocked) {
+                            onRestrictionChanged(restrictionPolicy.copy(wifiBlocked = it))
+                        }
+                        SwitchRow("Block SMS", restrictionPolicy.smsBlocked) {
+                            onRestrictionChanged(restrictionPolicy.copy(smsBlocked = it))
+                        }
+                        SwitchRow("Block mobile data", restrictionPolicy.mobileDataBlocked) {
+                            onRestrictionChanged(restrictionPolicy.copy(mobileDataBlocked = it))
+                        }
+                        SwitchRow("Block device reset", restrictionPolicy.deviceResetBlocked) {
+                            onRestrictionChanged(restrictionPolicy.copy(deviceResetBlocked = it))
+                        }
+                        SwitchRow("Block network reset", restrictionPolicy.networkResetBlocked) {
+                            onRestrictionChanged(restrictionPolicy.copy(networkResetBlocked = it))
+                        }
+                        SwitchRow("Block app reset", restrictionPolicy.appResetBlocked) {
+                            onRestrictionChanged(restrictionPolicy.copy(appResetBlocked = it))
+                        }
+                        SwitchRow("Block developer options", restrictionPolicy.developerOptionsBlocked) {
+                            onRestrictionChanged(restrictionPolicy.copy(developerOptionsBlocked = it))
+                        }
+                        SwitchRow("Block app installation", restrictionPolicy.appInstallBlocked) {
+                            onRestrictionChanged(restrictionPolicy.copy(appInstallBlocked = it))
+                        }
+                        SwitchRow("Block safe boot", restrictionPolicy.safeBootBlocked) {
+                            onRestrictionChanged(restrictionPolicy.copy(safeBootBlocked = it))
+                        }
+                        SwitchRow("Block adding accounts", restrictionPolicy.accountManagementBlocked) {
+                            onRestrictionChanged(restrictionPolicy.copy(accountManagementBlocked = it))
+                        }
                     }
                     Button(onClick = onApplyPolicies) { Text("Apply on device") }
                 }
