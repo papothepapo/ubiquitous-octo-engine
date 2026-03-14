@@ -11,6 +11,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
@@ -35,10 +36,10 @@ fun SettingsScreen(
     onSetPassword: (password: String, mode: PasswordEnforcementMode, days: Int) -> String?,
     importExportStatus: String?,
     enforcementStatus: String?,
+    vpnAutoStart: Boolean,
+    onVpnAutoStartChanged: (Boolean) -> Unit,
     onExport: () -> Unit,
-    onImport: () -> Unit,
-    onStartVpn: () -> Unit,
-    onStopVpn: () -> Unit
+    onImport: () -> Unit
 ) {
     val password = remember { mutableStateOf("") }
     val confirm = remember { mutableStateOf("") }
@@ -155,10 +156,10 @@ fun SettingsScreen(
         item {
             ElevatedCard {
                 Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("VPN / Firewall")
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = onStartVpn) { Text("Start local VPN") }
-                        Button(onClick = onStopVpn) { Text("Stop local VPN") }
+                    Text("App startup")
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Auto start VPN on app startup")
+                        Switch(checked = vpnAutoStart, onCheckedChange = onVpnAutoStartChanged)
                     }
                     enforcementStatus?.let { Text("Policy apply status: $it") }
                 }
