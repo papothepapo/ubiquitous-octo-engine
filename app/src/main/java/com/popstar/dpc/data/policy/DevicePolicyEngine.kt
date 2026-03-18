@@ -3,10 +3,12 @@ package com.popstar.dpc.data.policy
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
+import android.os.Build
 import android.os.UserManager
 import com.popstar.dpc.admin.PopstarDeviceAdminReceiver
 import com.popstar.dpc.data.model.AppRule
 import com.popstar.dpc.data.model.RestrictionPolicy
+import com.popstar.dpc.data.model.VpnLockdownConfig
 
 class DevicePolicyEngine(private val context: Context) {
     private val dpm = context.getSystemService(DevicePolicyManager::class.java)
@@ -23,14 +25,15 @@ class DevicePolicyEngine(private val context: Context) {
         applyRestriction(UserManager.DISALLOW_NETWORK_RESET, policy.networkResetBlocked, failures)
         applyRestriction(UserManager.DISALLOW_APPS_CONTROL, policy.appResetBlocked, failures)
         applyRestriction(UserManager.DISALLOW_DEBUGGING_FEATURES, policy.developerOptionsBlocked, failures)
-
-        // Additional hardening commonly used on managed devices.
         applyRestriction(UserManager.DISALLOW_SAFE_BOOT, policy.safeBootBlocked, failures)
         applyRestriction(UserManager.DISALLOW_ADD_USER, policy.deviceResetBlocked, failures)
         applyRestriction(UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES, policy.appResetBlocked, failures)
         applyRestriction(UserManager.DISALLOW_INSTALL_APPS, policy.appInstallBlocked, failures)
         applyRestriction(UserManager.DISALLOW_MODIFY_ACCOUNTS, policy.accountManagementBlocked, failures)
         applyRestriction(UserManager.DISALLOW_USB_FILE_TRANSFER, policy.mobileDataBlocked, failures)
+        policy.customRestrictions.filter { it.isNotBlank() }.distinct().forEach { key ->
+            applyRestriction(key.trim(), true, failures)
+        }
 
         runCatching {
             dpm.setShortSupportMessage(admin, policy.supportShortMessage.ifBlank { null })
@@ -70,6 +73,37 @@ class DevicePolicyEngine(private val context: Context) {
         return failures
     }
 
+    fun applyVpnLockdown(config: VpnLockdownConfig): List<String> {
+        if (!config.enabled) return emptyList()
+        if (!isAdminActive()) return listOf("Device admin is not active")
+        val packageName = config.selectedVpnPackage ?: return listOf("Select a VPN package before enabling lockdown")
+        return runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                dpm.setAlwaysOnVpnPackage(admin, packageName, true)
+                emptyList()
+            } else {
+                listOf("Always-on VPN lockdown requires Android 7.0+")
+            }
+        }.getOrElse { listOf("Always-on VPN failed: ${it.message}") }
+    }
+
+    fun removeAdminOrOwner(): String {
+        return when {
+            isDeviceOwnerApp() -> runCatching {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    dpm.clearDeviceOwnerApp(context.packageName)
+                    "Device owner removal requested"
+                } else {
+                    "Device owner removal requires Android 7.0+"
+                }
+            }.getOrElse { "Device owner removal failed: ${it.message}" }
+            isAdminActive() -> {
+                dpm.removeActiveAdmin(admin)
+                "Device admin removal requested"
+            }
+            else -> "No active admin or owner to remove"
+        }
+    }
 
     fun isDeviceOwnerApp(): Boolean = dpm.isDeviceOwnerApp(context.packageName)
 
@@ -84,5 +118,4 @@ class DevicePolicyEngine(private val context: Context) {
             failures.add("$key failed: ${it.message}")
         }
     }
-
 }

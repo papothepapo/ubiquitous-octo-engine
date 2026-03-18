@@ -37,7 +37,8 @@ data class RestrictionPolicy(
     val safeBootBlocked: Boolean = false,
     val accountManagementBlocked: Boolean = false,
     val supportShortMessage: String = "",
-    val supportLongMessage: String = ""
+    val supportLongMessage: String = "",
+    val customRestrictions: List<String> = emptyList()
 )
 
 @Serializable
@@ -58,6 +59,21 @@ data class AuditLogEntry(
 )
 
 @Serializable
+data class VpnLockdownConfig(
+    val enabled: Boolean = false,
+    val selectedVpnPackage: String? = null
+)
+
+@Serializable
+data class VpnLogEntry(
+    val timestamp: Long,
+    val category: String,
+    val appPackage: String? = null,
+    val site: String? = null,
+    val details: String
+)
+
+@Serializable
 data class PolicyBundle(
     val themeMode: AppThemeMode = AppThemeMode.SYSTEM,
     val vpnAutoStart: Boolean = false,
@@ -65,5 +81,7 @@ data class PolicyBundle(
     val restrictionPolicy: RestrictionPolicy = RestrictionPolicy(),
     val appRules: List<AppRule> = emptyList(),
     val firewallRules: List<FirewallRule> = emptyList(),
-    val logs: List<AuditLogEntry> = emptyList()
+    val logs: List<AuditLogEntry> = emptyList(),
+    val vpnLogs: List<VpnLogEntry> = emptyList(),
+    val vpnLockdown: VpnLockdownConfig = VpnLockdownConfig()
 )

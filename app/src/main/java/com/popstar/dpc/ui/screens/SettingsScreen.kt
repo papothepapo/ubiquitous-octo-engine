@@ -20,7 +20,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.popstar.dpc.data.model.AppThemeMode
+import com.popstar.dpc.data.model.AuditLogEntry
 import com.popstar.dpc.data.model.PasswordEnforcementMode
+import java.text.DateFormat
+import java.util.Date
 
 @Composable
 fun SettingsScreen(
@@ -37,9 +40,12 @@ fun SettingsScreen(
     importExportStatus: String?,
     enforcementStatus: String?,
     vpnAutoStart: Boolean,
+    auditLogs: List<AuditLogEntry>,
+    transferOwnerInstructions: String,
     onVpnAutoStartChanged: (Boolean) -> Unit,
     onExport: () -> Unit,
-    onImport: () -> Unit
+    onImport: () -> Unit,
+    onRemoveAdminOwner: () -> Unit
 ) {
     val password = remember { mutableStateOf("") }
     val confirm = remember { mutableStateOf("") }
@@ -65,7 +71,7 @@ fun SettingsScreen(
         item {
             ElevatedCard {
                 Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Device owner")
+                    Text("Owner and admin")
                     Text(deviceOwnerStatus)
                     OutlinedTextField(
                         value = adbDeviceOwnerCommand,
@@ -74,7 +80,11 @@ fun SettingsScreen(
                         label = { Text("ADB command") },
                         modifier = Modifier.fillMaxWidth()
                     )
-                    Button(onClick = onCopyAdbCommand) { Text("Copy command") }
+                    Text(transferOwnerInstructions)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = onCopyAdbCommand) { Text("Copy command") }
+                        Button(onClick = onRemoveAdminOwner) { Text("Remove admin / owner") }
+                    }
                 }
             }
         }
@@ -174,6 +184,17 @@ fun SettingsScreen(
                         Button(onClick = onImport) { Text("Import encrypted policy") }
                     }
                     importExportStatus?.let { Text(it) }
+                }
+            }
+        }
+        item {
+            ElevatedCard {
+                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Open log")
+                    Text("This log is append-only in the UI and cannot be deleted.")
+                    auditLogs.takeLast(25).asReversed().forEach { log ->
+                        Text("${DateFormat.getDateTimeInstance().format(Date(log.timestamp))}: ${log.action} — ${log.details}")
+                    }
                 }
             }
         }
