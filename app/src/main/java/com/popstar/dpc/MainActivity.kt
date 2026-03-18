@@ -3,31 +3,38 @@ package com.popstar.dpc
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.net.VpnService
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -50,12 +57,15 @@ import com.popstar.dpc.ui.screens.SettingsScreen
 import com.popstar.dpc.ui.screens.SetupPasswordScreen
 import com.popstar.dpc.ui.screens.UnlockScreen
 import com.popstar.dpc.ui.theme.PopstarTheme
+import kotlinx.coroutines.launch
 
 private enum class AuthState { LOADING, SETUP, LOCKED, UNLOCKED }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         setContent {
             val secureStore = remember { SecureStore(this) }
             val policyStorage = remember { PolicyStorage(secureStore, CryptoManager()) }
@@ -66,16 +76,17 @@ class MainActivity : ComponentActivity() {
             var installedApps by remember { mutableStateOf<List<InstalledAppInfo>>(emptyList()) }
 
             PopstarTheme(themeMode = bundle.themeMode) {
-
                 LaunchedEffect(Unit) {
-                    val loadedBundle = policyStorage.load()
+                    val loadedBundle = policyStorage.load().recordOpenEvent()
                     bundle = loadedBundle
-                    installedApps = loadLaunchableApps(packageManager)
+                    policyStorage.save(loadedBundle)
+                    installedApps = loadInstalledApps(packageManager)
                     FirewallRuntime.rules = loadedBundle.firewallRules
                     FirewallRuntime.blockedPackages = loadedBundle.appRules
                         .filter { it.networkBlocked }
                         .map { it.packageName }
                         .toSet()
+                    FirewallRuntime.restore(loadedBundle.vpnLogs)
 
                     val record = secureStore.getPasswordRecord()
                     val passwordRequired = PasswordPolicyEvaluator.isPasswordRequired(
@@ -126,6 +137,7 @@ class MainActivity : ComponentActivity() {
                                 .filter { rule -> rule.networkBlocked }
                                 .map { rule -> rule.packageName }
                                 .toSet()
+                            FirewallRuntime.restore(it.vpnLogs)
                             policyStorage.save(it)
                         },
                         policyStorage = policyStorage,
@@ -135,7 +147,8 @@ class MainActivity : ComponentActivity() {
                                 devicePolicyEngine.applyRestrictions(bundle.restrictionPolicy)
                             val suspensionFailures =
                                 devicePolicyEngine.applyAppControlRules(bundle.appRules)
-                            val failures = restrictionFailures + suspensionFailures
+                            val vpnFailures = devicePolicyEngine.applyVpnLockdown(bundle.vpnLockdown)
+                            val failures = restrictionFailures + suspensionFailures + vpnFailures
                             if (failures.isEmpty()) "Policies applied" else failures.joinToString("; ")
                         },
                         onDisablePassword = {
@@ -164,21 +177,33 @@ private fun MainTabs(
     onDisablePassword: () -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
     var importExportStatus by remember { mutableStateOf<String?>(null) }
     var enforcementStatus by remember { mutableStateOf<String?>(null) }
     var vpnStatus by remember { mutableStateOf<String?>(null) }
+
+    fun updateBundle(transform: (PolicyBundle) -> PolicyBundle) {
+        onBundleChange(transform(bundle).copy(vpnLogs = FirewallRuntime.events()))
+    }
+
+    fun showMessage(message: String) {
+        scope.launch { snackbarHostState.showSnackbar(message) }
+    }
 
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
     ) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
-        val payload = policyStorage.exportEncryptedPolicy(bundle)
+        val payload = policyStorage.exportEncryptedPolicy(bundle.copy(vpnLogs = FirewallRuntime.events()))
         runCatching {
             context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(payload) }
         }.onSuccess {
             importExportStatus = "Exported encrypted policy"
+            showMessage(importExportStatus!!)
         }.onFailure {
             importExportStatus = "Export failed: ${it.message}"
+            showMessage(importExportStatus!!)
         }
     }
 
@@ -194,11 +219,12 @@ private fun MainTabs(
             } else {
                 importExportStatus = "Import failed: invalid payload"
             }
+            importExportStatus?.let(::showMessage)
         }.onFailure {
             importExportStatus = "Import failed: ${it.message}"
+            showMessage(importExportStatus!!)
         }
     }
-
 
     val vpnPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         val prepareIntent = VpnService.prepare(context)
@@ -208,8 +234,8 @@ private fun MainTabs(
         } else {
             vpnStatus = "VPN permission was not granted"
         }
+        vpnStatus?.let(::showMessage)
     }
-
 
     LaunchedEffect(bundle.vpnAutoStart) {
         if (bundle.vpnAutoStart) {
@@ -227,6 +253,7 @@ private fun MainTabs(
     val items = listOf("device", "vpn", "settings")
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
             NavigationBar {
                 val backstack by navController.currentBackStackEntryAsState()
@@ -253,10 +280,19 @@ private fun MainTabs(
                     restrictionPolicy = bundle.restrictionPolicy,
                     installedApps = installedApps,
                     appRules = bundle.appRules,
-                    onAppRulesChanged = { onBundleChange(bundle.copy(appRules = it)) },
-                    onRestrictionChanged = { onBundleChange(bundle.copy(restrictionPolicy = it)) },
+                    onAppRulesChanged = {
+                        updateBundle { current -> current.copy(appRules = it) }
+                    },
+                    onRestrictionChanged = {
+                        updateBundle { current -> current.copy(restrictionPolicy = it) }
+                    },
+                    onAppAction = { showMessage(it) },
+                    onRestrictionAction = { showMessage(it) },
                     onApplyPolicies = {
-                        onApplyPolicies()?.let { enforcementStatus = it }
+                        onApplyPolicies()?.let {
+                            enforcementStatus = it
+                            showMessage(it)
+                        }
                     }
                 )
             }
@@ -265,6 +301,8 @@ private fun MainTabs(
                     rules = bundle.firewallRules,
                     blockedEvents = FirewallRuntime.events(),
                     vpnStatus = vpnStatus,
+                    vpnLockdown = bundle.vpnLockdown,
+                    availableVpnApps = installedApps.filter { it.isVpnCapable },
                     onStartVpn = {
                         val prepareIntent = VpnService.prepare(context)
                         if (prepareIntent != null) {
@@ -272,27 +310,47 @@ private fun MainTabs(
                         } else {
                             context.startService(com.popstar.dpc.vpn.PopstarVpnService.startIntent(context))
                             vpnStatus = "VPN started"
+                            showMessage(vpnStatus!!)
                         }
                     },
                     onStopVpn = {
-                        context.startService(com.popstar.dpc.vpn.PopstarVpnService.stopIntent(context))
+                        context.stopService(com.popstar.dpc.vpn.PopstarVpnService.stopIntent(context))
                         vpnStatus = "VPN stopped"
+                        showMessage(vpnStatus!!)
+                    },
+                    onAddRule = { pattern ->
+                        val next = FirewallRule(
+                            id = System.currentTimeMillis().toString(),
+                            pattern = pattern,
+                            priority = bundle.firewallRules.size + 1
+                        )
+                        updateBundle { current -> current.copy(firewallRules = current.firewallRules + next) }
+                        showMessage("Rule added. It takes effect after Apply changes.")
+                    },
+                    onClearLogs = {
+                        FirewallRuntime.clear()
+                        updateBundle { it.copy(vpnLogs = emptyList()) }
+                        showMessage("VPN logs cleared")
+                    },
+                    onVpnLockdownChanged = { enabled, packageName ->
+                        updateBundle {
+                            it.copy(
+                                vpnLockdown = it.vpnLockdown.copy(
+                                    enabled = enabled,
+                                    selectedVpnPackage = packageName
+                                )
+                            )
+                        }
+                        showMessage("VPN lockdown settings saved. Press Apply changes to enforce them.")
                     }
-                ) { pattern ->
-                    val next = FirewallRule(
-                        id = System.currentTimeMillis().toString(),
-                        pattern = pattern,
-                        priority = bundle.firewallRules.size + 1
-                    )
-                    onBundleChange(bundle.copy(firewallRules = bundle.firewallRules + next))
-                }
+                )
             }
             composable("settings") {
                 SettingsScreen(
                     currentThemeMode = bundle.themeMode,
-                    onThemeModeChanged = { onBundleChange(bundle.copy(themeMode = it)) },
+                    onThemeModeChanged = { updateBundle { current -> current.copy(themeMode = it) } },
                     deviceOwnerStatus = when {
-                        devicePolicyEngine.isDeviceOwnerApp() -> "Device owner active (test mode expected for easy removal/transfer)"
+                        devicePolicyEngine.isDeviceOwnerApp() -> "Device owner active"
                         devicePolicyEngine.isProfileOwnerApp() -> "Profile owner active"
                         devicePolicyEngine.isAdminActive() -> "Device admin active, not device owner"
                         else -> "No admin ownership active"
@@ -307,19 +365,21 @@ private fun MainTabs(
                             )
                         )
                         importExportStatus = "ADB command copied"
+                        showMessage(importExportStatus!!)
                     },
                     supportShortMessage = bundle.restrictionPolicy.supportShortMessage,
                     supportLongMessage = bundle.restrictionPolicy.supportLongMessage,
                     onSupportMessagesChanged = { shortMessage, longMessage ->
-                        onBundleChange(
-                            bundle.copy(
-                                restrictionPolicy = bundle.restrictionPolicy.copy(
+                        updateBundle {
+                            it.copy(
+                                restrictionPolicy = it.restrictionPolicy.copy(
                                     supportShortMessage = shortMessage,
                                     supportLongMessage = longMessage
                                 )
                             )
-                        )
+                        }
                         importExportStatus = "Support messages saved"
+                        showMessage("Support messages saved. Press Apply changes to enforce them.")
                     },
                     onDisablePassword = onDisablePassword,
                     onSetPassword = { password, mode, days ->
@@ -328,14 +388,15 @@ private fun MainTabs(
                             "Password disabled"
                         } else {
                             val record = PasswordHasher.create(password)
-                            val updated = bundle.copy(
-                                passwordPolicy = bundle.passwordPolicy.copy(
-                                    mode = mode,
-                                    timedDays = days,
-                                    enabledAtEpochMs = System.currentTimeMillis()
+                            updateBundle {
+                                it.copy(
+                                    passwordPolicy = it.passwordPolicy.copy(
+                                        mode = mode,
+                                        timedDays = days,
+                                        enabledAtEpochMs = System.currentTimeMillis()
+                                    )
                                 )
-                            )
-                            onBundleChange(updated)
+                            }
                             SecureStore(context).savePasswordRecord(record)
                             "Password policy saved"
                         }
@@ -343,10 +404,14 @@ private fun MainTabs(
                     importExportStatus = importExportStatus,
                     enforcementStatus = enforcementStatus,
                     vpnAutoStart = bundle.vpnAutoStart,
-                    onVpnAutoStartChanged = { enabled -> onBundleChange(bundle.copy(vpnAutoStart = enabled)) },
+                    auditLogs = bundle.logs,
+                    transferOwnerInstructions = "Export the encrypted policy, provision the new owner device, then import the policy there before removing admin/owner here.",
+                    onVpnAutoStartChanged = { enabled -> updateBundle { current -> current.copy(vpnAutoStart = enabled) } },
                     onExport = { exportLauncher.launch("popstar-policy.enc.json") },
-                    onImport = {
-                        importLauncher.launch(arrayOf("application/json", "text/plain"))
+                    onImport = { importLauncher.launch(arrayOf("application/json", "text/plain")) },
+                    onRemoveAdminOwner = {
+                        devicePolicyEngine.removeAdminOrOwner()
+                            .also { importExportStatus = it; showMessage(it) }
                     }
                 )
             }
@@ -354,15 +419,56 @@ private fun MainTabs(
     }
 }
 
-private fun loadLaunchableApps(pm: PackageManager): List<InstalledAppInfo> {
-    val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-    return pm.queryIntentActivities(intent, 0)
+private fun PolicyBundle.recordOpenEvent(): PolicyBundle = copy(
+    logs = logs + com.popstar.dpc.data.model.AuditLogEntry(
+        timestamp = System.currentTimeMillis(),
+        actor = "system",
+        action = "app_opened",
+        details = "App opened"
+    )
+)
+
+private fun loadInstalledApps(pm: PackageManager): List<InstalledAppInfo> {
+    val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+    val launchable = pm.queryIntentActivities(launcherIntent, 0)
         .map {
+            val pkg = it.activityInfo.packageName
             InstalledAppInfo(
-                packageName = it.activityInfo.packageName,
-                label = it.loadLabel(pm).toString()
+                packageName = pkg,
+                label = it.loadLabel(pm).toString(),
+                isSystemApp = (it.activityInfo.applicationInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0,
+                isVpnCapable = packageProvidesVpnService(pm, pkg)
             )
         }
+
+    val existingPackages = launchable.map { it.packageName }.toMutableSet()
+    val rulePackages = runCatching { pm.getInstalledApplications(PackageManager.GET_META_DATA) }.getOrDefault(emptyList())
+        .filter { it.packageName !in existingPackages }
+        .map {
+            InstalledAppInfo(
+                packageName = it.packageName,
+                label = pm.getApplicationLabel(it).toString(),
+                isSystemApp = (it.flags and ApplicationInfo.FLAG_SYSTEM) != 0,
+                isVpnCapable = packageProvidesVpnService(pm, it.packageName)
+            )
+        }
+
+    return (launchable + rulePackages)
         .distinctBy { it.packageName }
         .sortedBy { it.label.lowercase() }
+}
+
+private fun packageProvidesVpnService(pm: PackageManager, packageName: String): Boolean {
+    val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        PackageManager.PackageInfoFlags.of(PackageManager.GET_SERVICES.toLong())
+    } else null
+    val info = runCatching {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            pm.getPackageInfo(packageName, flags!!)
+        } else {
+            @Suppress("DEPRECATION")
+            pm.getPackageInfo(packageName, PackageManager.GET_SERVICES)
+        }
+    }.getOrNull() ?: return false
+    return info.services?.any { it.permission == android.Manifest.permission.BIND_VPN_SERVICE } == true
 }

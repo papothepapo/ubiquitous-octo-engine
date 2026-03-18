@@ -3,7 +3,6 @@ package com.popstar.dpc.vpn
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.net.ConnectivityManager
@@ -32,6 +31,9 @@ class PopstarVpnService : VpnService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
+            running.set(false)
+            vpnInterface?.close()
+            stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return Service.START_NOT_STICKY
         }
@@ -63,7 +65,7 @@ class PopstarVpnService : VpnService() {
 
                         val appPackage = resolvePacketOwnerPackage(buffer, length)
                         if (appPackage != null && appPackage in FirewallRuntime.blockedPackages) {
-                            FirewallRuntime.logBlocked("blocked app: $appPackage")
+                            FirewallRuntime.logBlocked(category = "app", appPackage = appPackage, details = "Blocked app request")
                             continue
                         }
 
@@ -71,9 +73,7 @@ class PopstarVpnService : VpnService() {
                             ?: PacketParsers.extractTlsSniHost(buffer, length)
 
                         if (host != null && ruleEngine.shouldBlock(host, appPackage, FirewallRuntime.rules)) {
-                            FirewallRuntime.logBlocked(
-                                if (appPackage == null) "blocked host: $host" else "blocked host: $host app: $appPackage"
-                            )
+                            FirewallRuntime.logBlocked(category = "site", appPackage = appPackage, site = host, details = if (appPackage == null) "Blocked host" else "Blocked host for app")
                             continue
                         }
 
@@ -210,19 +210,10 @@ class PopstarVpnService : VpnService() {
             manager.createNotificationChannel(channel)
         }
 
-        val stopIntent = Intent(this, PopstarVpnService::class.java).apply { action = ACTION_STOP }
-        val stopPending = PendingIntent.getService(
-            this,
-            10,
-            stopIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
         return Notification.Builder(this, CHANNEL_ID)
             .setContentTitle("Popstar Firewall")
             .setContentText("Local VPN active")
             .setSmallIcon(android.R.drawable.stat_sys_warning)
-            .addAction(Notification.Action.Builder(null, "Stop", stopPending).build())
             .build()
     }
 
