@@ -4,6 +4,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.VpnService
@@ -21,6 +22,7 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import androidx.core.app.NotificationCompat
 
 class PopstarVpnService : VpnService() {
     private var vpnInterface: ParcelFileDescriptor? = null
@@ -42,6 +44,7 @@ class PopstarVpnService : VpnService() {
             startForeground(NOTIFICATION_ID, buildNotification())
             vpnInterface = Builder()
                 .setSession("Popstar Local Firewall")
+                .setMtu(1500)
                 .addAddress("10.66.0.2", 32)
                 .addRoute("0.0.0.0", 0)
                 .addDnsServer(DNS_UPSTREAM)
@@ -61,7 +64,10 @@ class PopstarVpnService : VpnService() {
                     val buffer = ByteArray(32767)
                     while (running.get()) {
                         val length = input.read(buffer)
-                        if (length <= 0) continue
+                        if (length <= 0) {
+                            if (!running.get()) break
+                            continue
+                        }
 
                         val appPackage = resolvePacketOwnerPackage(buffer, length)
                         if (appPackage != null && appPackage in FirewallRuntime.blockedPackages) {
@@ -118,7 +124,7 @@ class PopstarVpnService : VpnService() {
             InetAddress.getByAddress(intToIpv4(metadata.destIp)),
             metadata.destPort
         )
-        val connectivity = getSystemService(ConnectivityManager::class.java) ?: return null
+        val connectivity = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return null
         val ownerUid = runCatching { connectivity.getConnectionOwnerUid(protocol, local, remote) }.getOrNull() ?: return null
         if (ownerUid <= 0) return null
 
@@ -131,7 +137,7 @@ class PopstarVpnService : VpnService() {
         return runCatching {
             DatagramSocket().use { socket ->
                 protect(socket)
-                socket.soTimeout = 3_000
+                socket.soTimeout = 1_500
                 val request = DatagramPacket(query, query.size, InetAddress.getByName(DNS_UPSTREAM), 53)
                 socket.send(request)
                 val responseBuffer = ByteArray(4096)
@@ -147,7 +153,7 @@ class PopstarVpnService : VpnService() {
         return runCatching {
             DatagramSocket().use { socket ->
                 protect(socket)
-                socket.soTimeout = 2_000
+                socket.soTimeout = 1_500
 
                 val destination = InetAddress.getByAddress(intToIpv4(packet.destIp))
                 val outbound = DatagramPacket(packet.payload, packet.payload.size, destination, packet.destPort)
@@ -186,6 +192,9 @@ class PopstarVpnService : VpnService() {
     }
 
     override fun onRevoke() {
+        running.set(false)
+        vpnInterface?.close()
+        stopForeground(STOP_FOREGROUND_REMOVE)
         super.onRevoke()
         stopSelf()
     }
@@ -200,7 +209,7 @@ class PopstarVpnService : VpnService() {
     }
 
     private fun buildNotification(): Notification {
-        val manager = getSystemService(NotificationManager::class.java)
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
@@ -210,10 +219,12 @@ class PopstarVpnService : VpnService() {
             manager.createNotificationChannel(channel)
         }
 
-        return Notification.Builder(this, CHANNEL_ID)
+        return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Popstar Firewall")
             .setContentText("Local VPN active")
             .setSmallIcon(android.R.drawable.stat_sys_warning)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
             .build()
     }
 

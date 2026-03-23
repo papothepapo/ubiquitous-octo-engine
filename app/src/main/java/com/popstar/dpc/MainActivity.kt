@@ -2,6 +2,7 @@ package com.popstar.dpc
 
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
@@ -22,6 +23,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -45,6 +47,7 @@ import com.popstar.dpc.data.model.FirewallRule
 import com.popstar.dpc.data.model.PasswordEnforcementMode
 import com.popstar.dpc.data.model.PasswordPolicy
 import com.popstar.dpc.data.model.PolicyBundle
+import com.popstar.dpc.data.policy.DeviceAdminEntry
 import com.popstar.dpc.data.policy.DevicePolicyEngine
 import com.popstar.dpc.data.policy.PolicyStorage
 import com.popstar.dpc.data.security.CryptoManager
@@ -57,13 +60,16 @@ import com.popstar.dpc.ui.screens.SettingsScreen
 import com.popstar.dpc.ui.screens.SetupPasswordScreen
 import com.popstar.dpc.ui.screens.UnlockScreen
 import com.popstar.dpc.ui.theme.PopstarTheme
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private enum class AuthState { LOADING, SETUP, LOCKED, UNLOCKED }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        installSplashScreen()
+        var keepSplashVisible = true
+        installSplashScreen().setKeepOnScreenCondition { keepSplashVisible }
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
@@ -74,29 +80,36 @@ class MainActivity : ComponentActivity() {
             var bundle by remember { mutableStateOf(PolicyBundle()) }
             var authState by remember { mutableStateOf(AuthState.LOADING) }
             var installedApps by remember { mutableStateOf<List<InstalledAppInfo>>(emptyList()) }
+            var deviceAdmins by remember { mutableStateOf<List<DeviceAdminEntry>>(emptyList()) }
 
             PopstarTheme(themeMode = bundle.themeMode) {
                 LaunchedEffect(Unit) {
-                    val loadedBundle = policyStorage.load().recordOpenEvent()
-                    bundle = loadedBundle
-                    policyStorage.save(loadedBundle)
-                    installedApps = loadInstalledApps(packageManager)
-                    FirewallRuntime.rules = loadedBundle.firewallRules
-                    FirewallRuntime.blockedPackages = loadedBundle.appRules
-                        .filter { it.networkBlocked }
-                        .map { it.packageName }
-                        .toSet()
-                    FirewallRuntime.restore(loadedBundle.vpnLogs)
+                    try {
+                        val loadedBundle = withContext(Dispatchers.IO) { policyStorage.load().recordOpenEvent() }
+                        val loadedApps = withContext(Dispatchers.IO) { loadInstalledApps(packageManager) }
+                        bundle = loadedBundle
+                        installedApps = loadedApps
+                        withContext(Dispatchers.IO) { policyStorage.save(loadedBundle) }
+                        deviceAdmins = devicePolicyEngine.getActiveAdmins()
+                        FirewallRuntime.rules = loadedBundle.firewallRules
+                        FirewallRuntime.blockedPackages = loadedBundle.appRules
+                            .filter { it.networkBlocked }
+                            .map { it.packageName }
+                            .toSet()
+                        FirewallRuntime.restore(loadedBundle.vpnLogs)
 
-                    val record = secureStore.getPasswordRecord()
-                    val passwordRequired = PasswordPolicyEvaluator.isPasswordRequired(
-                        loadedBundle.passwordPolicy,
-                        System.currentTimeMillis()
-                    )
-                    authState = when {
-                        record == null && loadedBundle.passwordPolicy.mode != PasswordEnforcementMode.DISABLED -> AuthState.SETUP
-                        passwordRequired && record != null -> AuthState.LOCKED
-                        else -> AuthState.UNLOCKED
+                        val record = secureStore.getPasswordRecord()
+                        val passwordRequired = PasswordPolicyEvaluator.isPasswordRequired(
+                            loadedBundle.passwordPolicy,
+                            System.currentTimeMillis()
+                        )
+                        authState = when {
+                            record == null && loadedBundle.passwordPolicy.mode != PasswordEnforcementMode.DISABLED -> AuthState.SETUP
+                            passwordRequired && record != null -> AuthState.LOCKED
+                            else -> AuthState.UNLOCKED
+                        }
+                    } finally {
+                        keepSplashVisible = false
                     }
                 }
 
@@ -130,6 +143,8 @@ class MainActivity : ComponentActivity() {
                     AuthState.UNLOCKED -> MainTabs(
                         bundle = bundle,
                         installedApps = installedApps,
+                        deviceAdmins = deviceAdmins,
+                        onRefreshDeviceAdmins = { deviceAdmins = devicePolicyEngine.getActiveAdmins() },
                         onBundleChange = {
                             bundle = it
                             FirewallRuntime.rules = it.firewallRules
@@ -170,6 +185,8 @@ class MainActivity : ComponentActivity() {
 private fun MainTabs(
     bundle: PolicyBundle,
     installedApps: List<InstalledAppInfo>,
+    deviceAdmins: List<DeviceAdminEntry>,
+    onRefreshDeviceAdmins: () -> Unit,
     onBundleChange: (PolicyBundle) -> Unit,
     policyStorage: PolicyStorage,
     devicePolicyEngine: DevicePolicyEngine,
@@ -188,7 +205,14 @@ private fun MainTabs(
     }
 
     fun showMessage(message: String) {
-        scope.launch { snackbarHostState.showSnackbar(message) }
+        scope.launch {
+            snackbarHostState.currentSnackbarData?.dismiss()
+            snackbarHostState.showSnackbar(
+                message = message,
+                withDismissAction = true,
+                duration = SnackbarDuration.Short
+            )
+        }
     }
 
     val exportLauncher = rememberLauncherForActivityResult(
@@ -280,6 +304,7 @@ private fun MainTabs(
                     restrictionPolicy = bundle.restrictionPolicy,
                     installedApps = installedApps,
                     appRules = bundle.appRules,
+                    deviceAdmins = deviceAdmins,
                     onAppRulesChanged = {
                         updateBundle { current -> current.copy(appRules = it) }
                     },
@@ -293,6 +318,14 @@ private fun MainTabs(
                             enforcementStatus = it
                             showMessage(it)
                         }
+                    },
+                    onRemoveAdmin = { entry ->
+                        val message = devicePolicyEngine.removeAdmin(entry)
+                        onRefreshDeviceAdmins()
+                        showMessage(message)
+                    },
+                    onOpenAdminSettings = {
+                        context.startActivity(devicePolicyEngine.createAdminSettingsIntent())
                     }
                 )
             }
@@ -314,7 +347,7 @@ private fun MainTabs(
                         }
                     },
                     onStopVpn = {
-                        context.stopService(com.popstar.dpc.vpn.PopstarVpnService.stopIntent(context))
+                        context.startService(com.popstar.dpc.vpn.PopstarVpnService.stopIntent(context))
                         vpnStatus = "VPN stopped"
                         showMessage(vpnStatus!!)
                     },
@@ -357,7 +390,7 @@ private fun MainTabs(
                     },
                     adbDeviceOwnerCommand = "adb shell dpm set-device-owner --device-owner-only com.popstar.dpc/.admin.PopstarDeviceAdminReceiver",
                     onCopyAdbCommand = {
-                        val clipboard = context.getSystemService(ClipboardManager::class.java)
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
                         clipboard?.setPrimaryClip(
                             ClipData.newPlainText(
                                 "dpc_set_device_owner",
@@ -430,7 +463,8 @@ private fun PolicyBundle.recordOpenEvent(): PolicyBundle = copy(
 
 private fun loadInstalledApps(pm: PackageManager): List<InstalledAppInfo> {
     val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-    val launchable = pm.queryIntentActivities(launcherIntent, 0)
+    val launcherFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PackageManager.MATCH_ALL else 0
+    val launchable = pm.queryIntentActivities(launcherIntent, launcherFlags)
         .map {
             val pkg = it.activityInfo.packageName
             InstalledAppInfo(
@@ -442,7 +476,16 @@ private fun loadInstalledApps(pm: PackageManager): List<InstalledAppInfo> {
         }
 
     val existingPackages = launchable.map { it.packageName }.toMutableSet()
-    val rulePackages = runCatching { pm.getInstalledApplications(PackageManager.GET_META_DATA) }.getOrDefault(emptyList())
+    val installedApplications = runCatching {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            pm.getInstalledApplications(PackageManager.ApplicationInfoFlags.of(allApplicationFlags().toLong()))
+        } else {
+            @Suppress("DEPRECATION")
+            pm.getInstalledApplications(allApplicationFlags())
+        }
+    }.getOrDefault(emptyList())
+
+    val extraPackages = installedApplications
         .filter { it.packageName !in existingPackages }
         .map {
             InstalledAppInfo(
@@ -453,18 +496,29 @@ private fun loadInstalledApps(pm: PackageManager): List<InstalledAppInfo> {
             )
         }
 
-    return (launchable + rulePackages)
+    return (launchable + extraPackages)
         .distinctBy { it.packageName }
         .sortedBy { it.label.lowercase() }
 }
 
+private fun allApplicationFlags(): Int {
+    var flags = PackageManager.GET_META_DATA
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+        flags = flags or PackageManager.MATCH_DISABLED_COMPONENTS or PackageManager.MATCH_DISABLED_UNTIL_USED_COMPONENTS
+    }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        flags = flags or PackageManager.MATCH_UNINSTALLED_PACKAGES
+    } else {
+        @Suppress("DEPRECATION")
+        run { flags = flags or PackageManager.GET_UNINSTALLED_PACKAGES }
+    }
+    return flags
+}
+
 private fun packageProvidesVpnService(pm: PackageManager, packageName: String): Boolean {
-    val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        PackageManager.PackageInfoFlags.of(PackageManager.GET_SERVICES.toLong())
-    } else null
     val info = runCatching {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            pm.getPackageInfo(packageName, flags!!)
+            pm.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(PackageManager.GET_SERVICES.toLong()))
         } else {
             @Suppress("DEPRECATION")
             pm.getPackageInfo(packageName, PackageManager.GET_SERVICES)

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ElevatedCard
@@ -24,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.popstar.dpc.data.model.AppRule
 import com.popstar.dpc.data.model.RestrictionPolicy
+import com.popstar.dpc.data.policy.DeviceAdminEntry
 
 /** Installed app metadata for app-control UI. */
 data class InstalledAppInfo(
@@ -38,14 +40,18 @@ fun DeviceControlScreen(
     restrictionPolicy: RestrictionPolicy,
     installedApps: List<InstalledAppInfo>,
     appRules: List<AppRule>,
+    deviceAdmins: List<DeviceAdminEntry>,
     onAppRulesChanged: (List<AppRule>) -> Unit,
     onRestrictionChanged: (RestrictionPolicy) -> Unit,
     onAppAction: (String) -> Unit,
     onRestrictionAction: (String) -> Unit,
-    onApplyPolicies: () -> Unit
+    onApplyPolicies: () -> Unit,
+    onRemoveAdmin: (DeviceAdminEntry) -> Unit,
+    onOpenAdminSettings: () -> Unit
 ) {
-    val appExpanded = remember { mutableStateOf(true) }
-    val restrictionExpanded = remember { mutableStateOf(true) }
+    val appExpanded = remember { mutableStateOf(false) }
+    val restrictionExpanded = remember { mutableStateOf(false) }
+    val adminExpanded = remember { mutableStateOf(false) }
     val search = remember { mutableStateOf("") }
     val selected = remember { mutableStateOf(setOf<String>()) }
     var customRestrictions by remember(restrictionPolicy.customRestrictions) {
@@ -100,49 +106,82 @@ fun DeviceControlScreen(
                     Button(onClick = { bulkUpdate({ it.copy(blocked = false, suspended = false, networkBlocked = false) }, "Apps marked as allowed. Press Apply changes to enforce.") }) { Text("Bulk allow") }
                 }
 
-                filtered.forEach { app ->
-                    val rule = appRules.firstOrNull { it.packageName == app.packageName }
-                    val isSelected = app.packageName in selected.value
-                    ElevatedCard {
-                        Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                                Column(Modifier.weight(1f)) {
-                                    Text(app.label)
-                                    Text(app.packageName, style = MaterialTheme.typography.bodySmall)
-                                    if (app.isSystemApp) Text("System app", style = MaterialTheme.typography.bodySmall)
-                                }
-                                Checkbox(
-                                    checked = isSelected,
-                                    onCheckedChange = { checked ->
-                                        selected.value = if (checked) selected.value + app.packageName else selected.value - app.packageName
-                                    }
-                                )
+                Text("${filtered.size} apps shown")
+            }
+        }
+        if (appExpanded.value) {
+            items(filtered, key = { it.packageName }) { app ->
+                val rule = appRules.firstOrNull { it.packageName == app.packageName }
+                val isSelected = app.packageName in selected.value
+                ElevatedCard {
+                    Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                            Column(Modifier.weight(1f)) {
+                                Text(app.label)
+                                Text(app.packageName, style = MaterialTheme.typography.bodySmall)
+                                if (app.isSystemApp) Text("System app", style = MaterialTheme.typography.bodySmall)
                             }
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                FilterChip(
-                                    selected = rule?.blocked == true,
-                                    onClick = {
-                                        updateRule(app.packageName) { it.copy(blocked = !it.blocked, networkBlocked = !it.blocked) }
-                                        onAppAction("${app.label} updated. Press Apply changes to enforce blocking.")
-                                    },
-                                    label = { Text("Block") }
-                                )
-                                FilterChip(
-                                    selected = rule?.suspended == true,
-                                    onClick = {
-                                        updateRule(app.packageName) { it.copy(suspended = !it.suspended) }
-                                        onAppAction("${app.label} updated. Press Apply changes to enforce suspension.")
-                                    },
-                                    label = { Text("Suspend") }
-                                )
-                                FilterChip(
-                                    selected = rule?.networkBlocked == true,
-                                    onClick = {
-                                        updateRule(app.packageName) { it.copy(networkBlocked = !it.networkBlocked) }
-                                        onAppAction("${app.label} network rule updated. Press Apply changes to enforce it.")
-                                    },
-                                    label = { Text("No network") }
-                                )
+                            Checkbox(
+                                checked = isSelected,
+                                onCheckedChange = { checked ->
+                                    selected.value = if (checked) selected.value + app.packageName else selected.value - app.packageName
+                                }
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            FilterChip(
+                                selected = rule?.blocked == true,
+                                onClick = {
+                                    updateRule(app.packageName) { it.copy(blocked = !it.blocked, networkBlocked = !it.blocked) }
+                                    onAppAction("${app.label} updated. Press Apply changes to enforce blocking.")
+                                },
+                                label = { Text("Block") }
+                            )
+                            FilterChip(
+                                selected = rule?.suspended == true,
+                                onClick = {
+                                    updateRule(app.packageName) { it.copy(suspended = !it.suspended) }
+                                    onAppAction("${app.label} updated. Press Apply changes to enforce suspension.")
+                                },
+                                label = { Text("Suspend") }
+                            )
+                            FilterChip(
+                                selected = rule?.networkBlocked == true,
+                                onClick = {
+                                    updateRule(app.packageName) { it.copy(networkBlocked = !it.networkBlocked) }
+                                    onAppAction("${app.label} network rule updated. Press Apply changes to enforce it.")
+                                },
+                                label = { Text("No network") }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            ExpandableSectionCard(
+                title = "Device admins",
+                expanded = adminExpanded.value,
+                subtitle = "Review active device admin apps and remove this app directly or open system settings for others.",
+                onToggle = { adminExpanded.value = !adminExpanded.value }
+            ) {
+                if (deviceAdmins.isEmpty()) {
+                    Text("No active device admin apps found")
+                } else {
+                    deviceAdmins.forEach { entry ->
+                        ElevatedCard {
+                            Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(entry.label)
+                                Text(entry.packageName, style = MaterialTheme.typography.bodySmall)
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Button(onClick = { onRemoveAdmin(entry) }) {
+                                        Text(if (entry.isThisApp) "Remove here" else "Review removal")
+                                    }
+                                    if (!entry.isThisApp) {
+                                        Button(onClick = onOpenAdminSettings) { Text("Open admin settings") }
+                                    }
+                                }
                             }
                         }
                     }
