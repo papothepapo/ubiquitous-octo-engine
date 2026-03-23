@@ -14,8 +14,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -54,6 +56,7 @@ fun SettingsScreen(
     val passwordStatus = remember { mutableStateOf<String?>(null) }
     val shortMessageState = remember(supportShortMessage) { mutableStateOf(supportShortMessage) }
     val longMessageState = remember(supportLongMessage) { mutableStateOf(supportLongMessage) }
+    var logsExpanded by remember { mutableStateOf(false) }
 
     LazyColumn(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
@@ -190,10 +193,19 @@ fun SettingsScreen(
         item {
             ElevatedCard {
                 Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Open log")
-                    Text("This log is append-only in the UI and cannot be deleted.")
-                    auditLogs.takeLast(25).asReversed().forEach { log ->
-                        Text("${DateFormat.getDateTimeInstance().format(Date(log.timestamp))}: ${log.action} — ${log.details}")
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Open log")
+                            Text("This log is append-only in the UI and cannot be deleted.")
+                        }
+                        Button(onClick = { logsExpanded = !logsExpanded }) {
+                            Text(if (logsExpanded) "Collapse" else "Expand")
+                        }
+                    }
+                    if (logsExpanded) {
+                        auditLogs.takeLast(25).asReversed().forEach { log ->
+                            Text("${DateFormat.getDateTimeInstance().format(Date(log.timestamp))}: ${log.action} — ${log.details}")
+                        }
                     }
                 }
             }

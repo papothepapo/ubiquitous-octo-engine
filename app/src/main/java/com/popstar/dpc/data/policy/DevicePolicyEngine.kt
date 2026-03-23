@@ -3,6 +3,7 @@ package com.popstar.dpc.data.policy
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.os.Build
 import android.os.UserManager
 import com.popstar.dpc.admin.PopstarDeviceAdminReceiver
@@ -10,8 +11,16 @@ import com.popstar.dpc.data.model.AppRule
 import com.popstar.dpc.data.model.RestrictionPolicy
 import com.popstar.dpc.data.model.VpnLockdownConfig
 
+
+data class DeviceAdminEntry(
+    val componentName: ComponentName,
+    val packageName: String,
+    val label: String,
+    val isThisApp: Boolean
+)
+
 class DevicePolicyEngine(private val context: Context) {
-    private val dpm = context.getSystemService(DevicePolicyManager::class.java)
+    private val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
     private val admin = ComponentName(context, PopstarDeviceAdminReceiver::class.java)
 
     fun applyRestrictions(policy: RestrictionPolicy): List<String> {
@@ -63,10 +72,14 @@ class DevicePolicyEngine(private val context: Context) {
                 failures.add("Block ${rule.packageName} failed: ${it.message}")
             }
 
-            runCatching {
-                dpm.setPackagesSuspended(admin, arrayOf(rule.packageName), rule.suspended)
-            }.onFailure {
-                failures.add("Suspend ${rule.packageName} failed: ${it.message}")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                runCatching {
+                    dpm.setPackagesSuspended(admin, arrayOf(rule.packageName), rule.suspended)
+                }.onFailure {
+                    failures.add("Suspend ${rule.packageName} failed: ${it.message}")
+                }
+            } else if (rule.suspended) {
+                failures.add("Suspend ${rule.packageName} requires Android 7.0+")
             }
         }
 
@@ -85,6 +98,36 @@ class DevicePolicyEngine(private val context: Context) {
                 listOf("Always-on VPN lockdown requires Android 7.0+")
             }
         }.getOrElse { listOf("Always-on VPN failed: ${it.message}") }
+    }
+
+    fun getActiveAdmins(): List<DeviceAdminEntry> {
+        val activeAdmins = dpm.activeAdmins ?: emptyList()
+        return activeAdmins.map { component ->
+            val label = runCatching {
+                val info = context.packageManager.getReceiverInfo(component, 0)
+                info.loadLabel(context.packageManager).toString()
+            }.getOrElse { component.flattenToShortString() }
+            DeviceAdminEntry(
+                componentName = component,
+                packageName = component.packageName,
+                label = label,
+                isThisApp = component == admin
+            )
+        }.sortedBy { it.label.lowercase() }
+    }
+
+    fun removeAdmin(entry: DeviceAdminEntry): String {
+        return if (entry.isThisApp) {
+            removeAdminOrOwner()
+        } else {
+            "Open Device Admin settings to remove ${entry.label}. Android only allows direct self-removal here."
+        }
+    }
+
+    fun createAdminSupportIntent(entry: DeviceAdminEntry): Intent {
+        return Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
+            .putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, entry.componentName)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
 
     fun removeAdminOrOwner(): String {

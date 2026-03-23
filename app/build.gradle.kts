@@ -10,7 +10,7 @@ android {
 
     defaultConfig {
         applicationId = "com.popstar.dpc"
-        minSdk = 28
+        minSdk = 22
         targetSdk = 34
         versionCode = 1
         versionName = "1.0.0"
