@@ -47,7 +47,7 @@ fun DeviceControlScreen(
     onRestrictionAction: (String) -> Unit,
     onApplyPolicies: () -> Unit,
     onRemoveAdmin: (DeviceAdminEntry) -> Unit,
-    onOpenAdminSettings: () -> Unit
+    onOpenAdminSettings: (DeviceAdminEntry) -> Unit
 ) {
     val appExpanded = remember { mutableStateOf(false) }
     val restrictionExpanded = remember { mutableStateOf(false) }
@@ -179,7 +179,7 @@ fun DeviceControlScreen(
                                         Text(if (entry.isThisApp) "Remove here" else "Review removal")
                                     }
                                     if (!entry.isThisApp) {
-                                        Button(onClick = onOpenAdminSettings) { Text("Open admin settings") }
+                                        Button(onClick = { onOpenAdminSettings(entry) }) { Text("Open admin settings") }
                                     }
                                 }
                             }

@@ -324,8 +324,8 @@ private fun MainTabs(
                         onRefreshDeviceAdmins()
                         showMessage(message)
                     },
-                    onOpenAdminSettings = {
-                        context.startActivity(devicePolicyEngine.createAdminSettingsIntent())
+                    onOpenAdminSettings = { entry ->
+                        context.startActivity(devicePolicyEngine.createAdminSupportIntent(entry))
                     }
                 )
             }
