@@ -15,7 +15,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.wrapContentSize
@@ -34,8 +37,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -114,9 +121,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 when (authState) {
-                    AuthState.LOADING -> Box(Modifier.fillMaxSize().wrapContentSize()) {
-                        CircularProgressIndicator()
-                    }
+                    AuthState.LOADING -> SplashLoadingScreen()
                     AuthState.SETUP -> SetupPasswordScreen { password, mode, days ->
                         val record = PasswordHasher.create(password)
                         secureStore.savePasswordRecord(record)
@@ -177,6 +182,32 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SplashLoadingScreen() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(androidx.compose.material3.MaterialTheme.colorScheme.background),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "Popstar DPC",
+                fontSize = 32.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "Filtering made easy.",
+                style = androidx.compose.material3.MaterialTheme.typography.titleMedium
+            )
+            CircularProgressIndicator(modifier = Modifier.padding(top = 8.dp))
         }
     }
 }
@@ -323,9 +354,6 @@ private fun MainTabs(
                         val message = devicePolicyEngine.removeAdmin(entry)
                         onRefreshDeviceAdmins()
                         showMessage(message)
-                    },
-                    onOpenAdminSettings = { entry ->
-                        context.startActivity(devicePolicyEngine.createAdminSupportIntent(entry))
                     }
                 )
             }
@@ -524,5 +552,6 @@ private fun packageProvidesVpnService(pm: PackageManager, packageName: String): 
             pm.getPackageInfo(packageName, PackageManager.GET_SERVICES)
         }
     }.getOrNull() ?: return false
+
     return info.services?.any { it.permission == android.Manifest.permission.BIND_VPN_SERVICE } == true
 }

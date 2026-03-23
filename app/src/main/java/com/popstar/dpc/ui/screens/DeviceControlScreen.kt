@@ -46,8 +46,7 @@ fun DeviceControlScreen(
     onAppAction: (String) -> Unit,
     onRestrictionAction: (String) -> Unit,
     onApplyPolicies: () -> Unit,
-    onRemoveAdmin: (DeviceAdminEntry) -> Unit,
-    onOpenAdminSettings: (DeviceAdminEntry) -> Unit
+    onRemoveAdmin: (DeviceAdminEntry) -> Unit
 ) {
     val appExpanded = remember { mutableStateOf(false) }
     val restrictionExpanded = remember { mutableStateOf(false) }
@@ -163,7 +162,7 @@ fun DeviceControlScreen(
             ExpandableSectionCard(
                 title = "Device admins",
                 expanded = adminExpanded.value,
-                subtitle = "Review active device admin apps and remove this app directly or open system settings for others.",
+                subtitle = "Review active device admin apps and request direct removal for each one.",
                 onToggle = { adminExpanded.value = !adminExpanded.value }
             ) {
                 if (deviceAdmins.isEmpty()) {
@@ -174,13 +173,8 @@ fun DeviceControlScreen(
                             Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Text(entry.label)
                                 Text(entry.packageName, style = MaterialTheme.typography.bodySmall)
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Button(onClick = { onRemoveAdmin(entry) }) {
-                                        Text(if (entry.isThisApp) "Remove here" else "Review removal")
-                                    }
-                                    if (!entry.isThisApp) {
-                                        Button(onClick = { onOpenAdminSettings(entry) }) { Text("Open admin settings") }
-                                    }
+                                Button(onClick = { onRemoveAdmin(entry) }) {
+                                    Text(if (entry.isThisApp) "Remove here" else "Remove admin")
                                 }
                             }
                         }
@@ -249,7 +243,14 @@ fun DeviceControlScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
                 Text("Custom restrictions are applied exactly as entered when you press Apply changes.")
-                Button(onClick = onApplyPolicies) { Text("Apply changes") }
+            }
+        }
+        item {
+            Button(
+                onClick = onApplyPolicies,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Apply changes")
             }
         }
     }

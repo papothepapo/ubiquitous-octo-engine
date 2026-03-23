@@ -117,11 +117,14 @@ class DevicePolicyEngine(private val context: Context) {
     }
 
     fun removeAdmin(entry: DeviceAdminEntry): String {
-        return if (entry.isThisApp) {
-            removeAdminOrOwner()
-        } else {
-            "Open Device Admin settings to remove ${entry.label}. Android only allows direct self-removal here."
-        }
+        return runCatching {
+            dpm.removeActiveAdmin(entry.componentName)
+            if (entry.isThisApp) {
+                "Device admin removal requested"
+            } else {
+                "Removal requested for ${entry.label}"
+            }
+        }.getOrElse { "Removing ${entry.label} failed: ${it.message}" }
     }
 
     fun createAdminSupportIntent(entry: DeviceAdminEntry): Intent {
