@@ -46,7 +46,10 @@ class PopstarVpnService : VpnService() {
                 .setSession("Popstar Local Firewall")
                 .setMtu(1500)
                 .addAddress("10.66.0.2", 32)
-                .addRoute("0.0.0.0", 0)
+                // Route only DNS resolver traffic through this local VPN so normal app traffic
+                // keeps flowing over the system network stack.
+                .addRoute(DNS_UPSTREAM, 32)
+                .addRoute("1.0.0.1", 32)
                 .addDnsServer(DNS_UPSTREAM)
                 .addDnsServer("1.1.1.1")
                 .establish()
@@ -92,14 +95,8 @@ class PopstarVpnService : VpnService() {
                             continue
                         }
 
-                        val udpPacket = UdpTunnelPacketCodec.parsePacket(buffer, length)
-                        if (udpPacket != null) {
-                            val response = forwardUdpPacket(udpPacket) ?: continue
-                            val packet = UdpTunnelPacketCodec.buildResponse(udpPacket, response)
-                            output.write(packet)
-                            output.flush()
-                            continue
-                        }
+                        // Non-DNS packets are not handled here; only DNS resolver traffic is routed
+                        // into this service via Builder routes.
                     }
                 }
             }
@@ -148,32 +145,6 @@ class PopstarVpnService : VpnService() {
         }.getOrNull()
     }
 
-
-    private fun forwardUdpPacket(packet: UdpTunnelPacketCodec.UdpPacket): UdpTunnelPacketCodec.UdpResponse? {
-        return runCatching {
-            DatagramSocket().use { socket ->
-                protect(socket)
-                socket.soTimeout = 1_500
-
-                val destination = InetAddress.getByAddress(intToIpv4(packet.destIp))
-                val outbound = DatagramPacket(packet.payload, packet.payload.size, destination, packet.destPort)
-                socket.send(outbound)
-
-                val responseBuffer = ByteArray(65507)
-                val inbound = DatagramPacket(responseBuffer, responseBuffer.size)
-                socket.receive(inbound)
-
-                val sourceAddress = inbound.socketAddress as? InetSocketAddress
-                val sourceIp = sourceAddress?.address?.address?.let(::ipv4ToInt) ?: packet.destIp
-                UdpTunnelPacketCodec.UdpResponse(
-                    sourceIp = sourceIp,
-                    sourcePort = inbound.port,
-                    payload = inbound.data.copyOf(inbound.length)
-                )
-            }
-        }.getOrNull()
-    }
-
     private fun intToIpv4(value: Int): ByteArray {
         return byteArrayOf(
             ((value ushr 24) and 0xFF).toByte(),
@@ -181,14 +152,6 @@ class PopstarVpnService : VpnService() {
             ((value ushr 8) and 0xFF).toByte(),
             (value and 0xFF).toByte()
         )
-    }
-
-    private fun ipv4ToInt(bytes: ByteArray): Int {
-        if (bytes.size < 4) return 0
-        return ((bytes[0].toInt() and 0xFF) shl 24) or
-            ((bytes[1].toInt() and 0xFF) shl 16) or
-            ((bytes[2].toInt() and 0xFF) shl 8) or
-            (bytes[3].toInt() and 0xFF)
     }
 
     override fun onRevoke() {

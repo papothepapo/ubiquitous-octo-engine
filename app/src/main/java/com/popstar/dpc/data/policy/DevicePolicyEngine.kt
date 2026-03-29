@@ -4,6 +4,7 @@ import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.provider.Settings
 import android.os.Build
 import android.os.UserManager
 import com.popstar.dpc.admin.PopstarDeviceAdminReceiver
@@ -130,6 +131,11 @@ class DevicePolicyEngine(private val context: Context) {
     fun createAdminSupportIntent(entry: DeviceAdminEntry): Intent {
         return Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
             .putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, entry.componentName)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+
+    fun createAdminRemovalIntent(): Intent {
+        return Intent(Settings.ACTION_DEVICE_ADMIN_SETTINGS)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
 
