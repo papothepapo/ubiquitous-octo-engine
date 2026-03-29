@@ -351,9 +351,8 @@ private fun MainTabs(
                         }
                     },
                     onRemoveAdmin = { entry ->
-                        val message = devicePolicyEngine.removeAdmin(entry)
-                        onRefreshDeviceAdmins()
-                        showMessage(message)
+                        context.startActivity(devicePolicyEngine.createAdminRemovalIntent())
+                        showMessage("Opened device admin settings. Remove ${entry.label} there.")
                     }
                 )
             }

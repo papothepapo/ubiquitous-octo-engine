@@ -133,6 +133,11 @@ class DevicePolicyEngine(private val context: Context) {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
 
+    fun createAdminRemovalIntent(): Intent {
+        return Intent(DevicePolicyManager.ACTION_DEVICE_ADMIN_SETTINGS)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+
     fun removeAdminOrOwner(): String {
         return when {
             isDeviceOwnerApp() -> runCatching {
