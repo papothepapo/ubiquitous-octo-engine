@@ -35,7 +35,9 @@ class PolicyStorage(
     }
 
     fun importEncryptedPolicy(payload: String): PolicyBundle? {
+        if (payload.length > MAX_IMPORT_BYTES) return null
         val parsed = runCatching { json.decodeFromString<ExportedPolicy>(payload) }.getOrNull() ?: return null
+        if (parsed.version != CURRENT_VERSION || parsed.algorithm != ALGORITHM) return null
         return decodeBundle(parsed.ciphertext)
     }
 
@@ -49,5 +51,11 @@ class PolicyStorage(
             val clear = cryptoManager.decrypt(encrypted)
             json.decodeFromString<PolicyBundle>(clear)
         }.getOrNull()
+    }
+
+    private companion object {
+        const val CURRENT_VERSION = 1
+        const val ALGORITHM = "AES/GCM/NoPadding"
+        const val MAX_IMPORT_BYTES = 2 * 1024 * 1024
     }
 }

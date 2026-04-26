@@ -126,7 +126,7 @@ fun FirewallScreen(
                         } else {
                             val grouped = blockedEvents.groupBy { Triple(it.category, it.appPackage ?: "Unknown app", it.site ?: "Unknown site") }
                             grouped.entries.take(30).forEach { (key, values) ->
-                                Text("${key.first}: ${key.second} • ${key.third} • ${values.size} events")
+                                Text("${key.first}: ${key.second} - ${key.third} - ${values.size} events")
                             }
                         }
                     }

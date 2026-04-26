@@ -21,7 +21,7 @@ class SecureStore(context: Context) {
         prefs.edit()
             .putString(KEY_PASSWORD_HASH, record.hashBase64)
             .putString(KEY_PASSWORD_SALT, record.saltBase64)
-            .apply()
+            .commit()
     }
 
     fun getPasswordRecord(): PasswordRecord? {
@@ -31,7 +31,7 @@ class SecureStore(context: Context) {
     }
 
     fun clearPasswordRecord() {
-        prefs.edit().remove(KEY_PASSWORD_HASH).remove(KEY_PASSWORD_SALT).apply()
+        prefs.edit().remove(KEY_PASSWORD_HASH).remove(KEY_PASSWORD_SALT).commit()
     }
 
     fun saveEncryptedPolicy(blob: String) = prefs.edit().putString(KEY_POLICY_BLOB, blob).apply()

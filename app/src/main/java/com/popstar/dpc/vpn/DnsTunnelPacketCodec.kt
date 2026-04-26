@@ -31,6 +31,7 @@ object DnsTunnelPacketCodec {
         if (sourcePort != 53 && destPort != 53) return null
 
         val udpLen = u16(packet, ihl + 4)
+        if (udpLen < 8) return null
         val payloadLen = (udpLen - 8).coerceAtLeast(0)
         if (ihl + 8 + payloadLen > length) return null
         val dnsPayload = packet.copyOfRange(ihl + 8, ihl + 8 + payloadLen)

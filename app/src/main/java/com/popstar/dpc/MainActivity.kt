@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -43,6 +42,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -123,16 +123,21 @@ class MainActivity : ComponentActivity() {
                 when (authState) {
                     AuthState.LOADING -> SplashLoadingScreen()
                     AuthState.SETUP -> SetupPasswordScreen { password, mode, days ->
-                        val record = PasswordHasher.create(password)
-                        secureStore.savePasswordRecord(record)
-                        bundle = bundle.copy(
+                        if (mode == PasswordEnforcementMode.DISABLED) {
+                            secureStore.clearPasswordRecord()
+                        } else {
+                            val record = PasswordHasher.create(password)
+                            secureStore.savePasswordRecord(record)
+                        }
+                        val updated = bundle.copy(
                             passwordPolicy = PasswordPolicy(
                                 mode = mode,
                                 timedDays = days,
                                 enabledAtEpochMs = System.currentTimeMillis()
                             )
                         )
-                        policyStorage.save(bundle)
+                        bundle = updated
+                        policyStorage.save(updated)
                         authState = AuthState.UNLOCKED
                     }
 
@@ -167,7 +172,11 @@ class MainActivity : ComponentActivity() {
                                 devicePolicyEngine.applyRestrictions(bundle.restrictionPolicy)
                             val suspensionFailures =
                                 devicePolicyEngine.applyAppControlRules(bundle.appRules)
-                            val vpnFailures = devicePolicyEngine.applyVpnLockdown(bundle.vpnLockdown)
+                            val vpnFailures = devicePolicyEngine.applyVpnLockdown(
+                                config = bundle.vpnLockdown,
+                                appRules = bundle.appRules,
+                                installedPackages = installedApps.map { it.packageName }.toSet()
+                            )
                             val failures = restrictionFailures + suspensionFailures + vpnFailures
                             if (failures.isEmpty()) "Policies applied" else failures.joinToString("; ")
                         },
@@ -284,7 +293,10 @@ private fun MainTabs(
     val vpnPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         val prepareIntent = VpnService.prepare(context)
         if (prepareIntent == null) {
-            context.startService(com.popstar.dpc.vpn.PopstarVpnService.startIntent(context))
+            ContextCompat.startForegroundService(
+                context,
+                com.popstar.dpc.vpn.PopstarVpnService.startIntent(context)
+            )
             vpnStatus = "VPN started"
         } else {
             vpnStatus = "VPN permission was not granted"
@@ -296,7 +308,10 @@ private fun MainTabs(
         if (bundle.vpnAutoStart) {
             val prepareIntent = VpnService.prepare(context)
             if (prepareIntent == null) {
-                context.startService(com.popstar.dpc.vpn.PopstarVpnService.startIntent(context))
+                ContextCompat.startForegroundService(
+                    context,
+                    com.popstar.dpc.vpn.PopstarVpnService.startIntent(context)
+                )
                 vpnStatus = "VPN auto-started"
             } else {
                 vpnStatus = "VPN auto-start pending permission"
@@ -345,9 +360,19 @@ private fun MainTabs(
                     onAppAction = { showMessage(it) },
                     onRestrictionAction = { showMessage(it) },
                     onApplyPolicies = {
-                        onApplyPolicies()?.let {
-                            enforcementStatus = it
-                            showMessage(it)
+                        onApplyPolicies()?.let { result ->
+                            val shouldRefreshVpn = bundle.firewallRules.isNotEmpty() ||
+                                bundle.appRules.any { it.networkBlocked } ||
+                                bundle.vpnAutoStart
+                            if (shouldRefreshVpn && VpnService.prepare(context) == null) {
+                                ContextCompat.startForegroundService(
+                                    context,
+                                    com.popstar.dpc.vpn.PopstarVpnService.startIntent(context)
+                                )
+                                vpnStatus = "VPN refreshed"
+                            }
+                            enforcementStatus = result
+                            showMessage(result)
                         }
                     },
                     onRemoveAdmin = { entry ->
@@ -368,7 +393,10 @@ private fun MainTabs(
                         if (prepareIntent != null) {
                             vpnPermissionLauncher.launch(prepareIntent)
                         } else {
-                            context.startService(com.popstar.dpc.vpn.PopstarVpnService.startIntent(context))
+                            ContextCompat.startForegroundService(
+                                context,
+                                com.popstar.dpc.vpn.PopstarVpnService.startIntent(context)
+                            )
                             vpnStatus = "VPN started"
                             showMessage(vpnStatus!!)
                         }
@@ -480,12 +508,12 @@ private fun MainTabs(
 }
 
 private fun PolicyBundle.recordOpenEvent(): PolicyBundle = copy(
-    logs = logs + com.popstar.dpc.data.model.AuditLogEntry(
+    logs = (logs + com.popstar.dpc.data.model.AuditLogEntry(
         timestamp = System.currentTimeMillis(),
         actor = "system",
         action = "app_opened",
         details = "App opened"
-    )
+    )).takeLast(1_000)
 )
 
 private fun loadInstalledApps(pm: PackageManager): List<InstalledAppInfo> {
@@ -533,11 +561,9 @@ private fun allApplicationFlags(): Int {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
         flags = flags or PackageManager.MATCH_DISABLED_COMPONENTS or PackageManager.MATCH_DISABLED_UNTIL_USED_COMPONENTS
     }
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-        flags = flags or PackageManager.MATCH_UNINSTALLED_PACKAGES
-    } else {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
         @Suppress("DEPRECATION")
-        run { flags = flags or PackageManager.GET_UNINSTALLED_PACKAGES }
+        run { flags = flags or PackageManager.GET_DISABLED_COMPONENTS }
     }
     return flags
 }

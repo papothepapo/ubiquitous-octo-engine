@@ -2,41 +2,52 @@ package com.popstar.dpc.data.firewall
 
 import com.popstar.dpc.data.model.FirewallRule
 import com.popstar.dpc.data.model.VpnLogEntry
-import java.util.concurrent.CopyOnWriteArrayList
+import java.util.ArrayDeque
 
 object FirewallRuntime {
+    private const val MAX_BLOCKED_EVENTS = 500
+
     @Volatile
     var rules: List<FirewallRule> = emptyList()
 
     @Volatile
     var blockedPackages: Set<String> = emptySet()
 
-    private val blockedEvents = CopyOnWriteArrayList<VpnLogEntry>()
+    private val blockedEvents = ArrayDeque<VpnLogEntry>(MAX_BLOCKED_EVENTS)
 
     fun logBlocked(category: String, appPackage: String? = null, site: String? = null, details: String) {
-        blockedEvents.add(
-            0,
-            VpnLogEntry(
-                timestamp = System.currentTimeMillis(),
-                category = category,
-                appPackage = appPackage,
-                site = site,
-                details = details
+        synchronized(blockedEvents) {
+            blockedEvents.addFirst(
+                VpnLogEntry(
+                    timestamp = System.currentTimeMillis(),
+                    category = category,
+                    appPackage = appPackage,
+                    site = site,
+                    details = details
+                )
             )
-        )
-        if (blockedEvents.size > 500) {
-            blockedEvents.removeAt(blockedEvents.lastIndex)
+            while (blockedEvents.size > MAX_BLOCKED_EVENTS) {
+                blockedEvents.removeLast()
+            }
         }
     }
 
     fun restore(events: List<VpnLogEntry>) {
-        blockedEvents.clear()
-        blockedEvents.addAll(events.take(500))
+        synchronized(blockedEvents) {
+            blockedEvents.clear()
+            events.take(MAX_BLOCKED_EVENTS).forEach { blockedEvents.addLast(it) }
+        }
     }
 
     fun clear() {
-        blockedEvents.clear()
+        synchronized(blockedEvents) {
+            blockedEvents.clear()
+        }
     }
 
-    fun events(): List<VpnLogEntry> = blockedEvents.toList()
+    fun events(): List<VpnLogEntry> {
+        return synchronized(blockedEvents) {
+            blockedEvents.toList()
+        }
+    }
 }

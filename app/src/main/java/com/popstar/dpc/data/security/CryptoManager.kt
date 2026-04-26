@@ -4,6 +4,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import java.nio.ByteBuffer
+import java.nio.charset.StandardCharsets
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -17,7 +18,7 @@ class CryptoManager {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateSecretKey())
         val iv = cipher.iv
-        val cipherBytes = cipher.doFinal(plainText.toByteArray())
+        val cipherBytes = cipher.doFinal(plainText.toByteArray(StandardCharsets.UTF_8))
         val blob = ByteBuffer.allocate(4 + iv.size + cipherBytes.size)
             .putInt(iv.size)
             .put(iv)
@@ -37,7 +38,7 @@ class CryptoManager {
 
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, getOrCreateSecretKey(), GCMParameterSpec(128, iv))
-        return String(cipher.doFinal(encrypted))
+        return String(cipher.doFinal(encrypted), StandardCharsets.UTF_8)
     }
 
     private fun getOrCreateSecretKey(): SecretKey {

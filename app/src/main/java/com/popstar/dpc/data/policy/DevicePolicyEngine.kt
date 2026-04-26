@@ -86,16 +86,41 @@ class DevicePolicyEngine(private val context: Context) {
         return failures
     }
 
-    fun applyVpnLockdown(config: VpnLockdownConfig): List<String> {
-        if (!config.enabled) return emptyList()
-        if (!isAdminActive()) return listOf("Device admin is not active")
-        val packageName = config.selectedVpnPackage ?: return listOf("Select a VPN package before enabling lockdown")
+    fun applyVpnLockdown(
+        config: VpnLockdownConfig,
+        appRules: List<AppRule>,
+        installedPackages: Set<String>
+    ): List<String> {
+        if (!isAdminActive()) return if (config.enabled) listOf("Device admin is not active") else emptyList()
+        if (!config.enabled) {
+            return clearAlwaysOnVpn()
+        }
+
+        val packageName = config.selectedVpnPackage ?: context.packageName
         return runCatching {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                dpm.setAlwaysOnVpnPackage(admin, packageName, true)
-                emptyList()
-            } else {
-                listOf("Always-on VPN lockdown requires Android 7.0+")
+            when {
+                Build.VERSION.SDK_INT < Build.VERSION_CODES.N -> {
+                    listOf("Always-on VPN lockdown requires Android 7.0+")
+                }
+                packageName == context.packageName && Build.VERSION.SDK_INT < Build.VERSION_CODES.Q -> {
+                    emptyList()
+                }
+                packageName == context.packageName && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q -> {
+                    val blockedPackages = appRules
+                        .asSequence()
+                        .filter { it.networkBlocked }
+                        .map { it.packageName }
+                        .toSet()
+                    val lockdownAllowlist = (installedPackages - blockedPackages + context.packageName)
+                        .filterNot { it.isBlank() }
+                        .toSet()
+                    dpm.setAlwaysOnVpnPackage(admin, packageName, true, lockdownAllowlist)
+                    emptyList()
+                }
+                else -> {
+                    dpm.setAlwaysOnVpnPackage(admin, packageName, true)
+                    emptyList()
+                }
             }
         }.getOrElse { listOf("Always-on VPN failed: ${it.message}") }
     }
@@ -161,6 +186,14 @@ class DevicePolicyEngine(private val context: Context) {
     fun isProfileOwnerApp(): Boolean = dpm.isProfileOwnerApp(context.packageName)
 
     fun isAdminActive(): Boolean = dpm.isAdminActive(admin)
+
+    private fun clearAlwaysOnVpn(): List<String> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return emptyList()
+        return runCatching {
+            dpm.setAlwaysOnVpnPackage(admin, null, false)
+            emptyList<String>()
+        }.getOrElse { listOf("Clearing always-on VPN failed: ${it.message}") }
+    }
 
     private fun applyRestriction(key: String, enabled: Boolean, failures: MutableList<String>) {
         runCatching {

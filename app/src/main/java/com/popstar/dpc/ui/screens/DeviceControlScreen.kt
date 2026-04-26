@@ -17,6 +17,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -57,13 +58,28 @@ fun DeviceControlScreen(
         mutableStateOf(restrictionPolicy.customRestrictions.joinToString("\n"))
     }
 
-    val availableByPackage = installedApps.associateBy { it.packageName }
-    val combinedApps = (installedApps + appRules.filter { it.packageName !in availableByPackage }.map {
-        InstalledAppInfo(packageName = it.packageName, label = it.packageName)
-    }).distinctBy { it.packageName }
+    val combinedApps by remember(installedApps, appRules) {
+        derivedStateOf {
+            val availableByPackage = installedApps.associateBy { it.packageName }
+            (installedApps + appRules.filter { it.packageName !in availableByPackage }.map {
+                InstalledAppInfo(packageName = it.packageName, label = it.packageName)
+            }).distinctBy { it.packageName }
+        }
+    }
 
-    val filtered = combinedApps.filter {
-        it.label.contains(search.value, ignoreCase = true) || it.packageName.contains(search.value, ignoreCase = true)
+    val filtered by remember(combinedApps, search.value) {
+        derivedStateOf {
+            combinedApps.filter {
+                it.label.contains(search.value, ignoreCase = true) ||
+                    it.packageName.contains(search.value, ignoreCase = true)
+            }
+        }
+    }
+
+    val rulesByPackage by remember(appRules) {
+        derivedStateOf {
+            appRules.associateBy { it.packageName }
+        }
     }
 
     fun updateRule(packageName: String, transform: (AppRule) -> AppRule) {
@@ -74,7 +90,11 @@ fun DeviceControlScreen(
     }
 
     fun bulkUpdate(transform: (AppRule) -> AppRule, message: String) {
-        selected.value.forEach { pkg -> updateRule(pkg, transform) }
+        val current = appRules.associateBy { it.packageName }.toMutableMap()
+        selected.value.forEach { pkg ->
+            current[pkg] = transform(current[pkg] ?: AppRule(packageName = pkg))
+        }
+        onAppRulesChanged(current.values.sortedBy { it.packageName })
         onAppAction(message)
     }
 
@@ -110,7 +130,7 @@ fun DeviceControlScreen(
         }
         if (appExpanded.value) {
             items(filtered, key = { it.packageName }) { app ->
-                val rule = appRules.firstOrNull { it.packageName == app.packageName }
+                val rule = rulesByPackage[app.packageName]
                 val isSelected = app.packageName in selected.value
                 ElevatedCard {
                     Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -189,9 +209,9 @@ fun DeviceControlScreen(
                 subtitle = "Changes only apply after you press Apply changes.",
                 onToggle = { restrictionExpanded.value = !restrictionExpanded.value }
             ) {
-                SwitchRow("Block Wi‑Fi", restrictionPolicy.wifiBlocked) {
+                SwitchRow("Block Wi-Fi", restrictionPolicy.wifiBlocked) {
                     onRestrictionChanged(restrictionPolicy.copy(wifiBlocked = it))
-                    onRestrictionAction("Wi‑Fi restriction updated. Press Apply changes to enforce.")
+                    onRestrictionAction("Wi-Fi restriction updated. Press Apply changes to enforce.")
                 }
                 SwitchRow("Block SMS", restrictionPolicy.smsBlocked) {
                     onRestrictionChanged(restrictionPolicy.copy(smsBlocked = it))

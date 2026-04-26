@@ -11,6 +11,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.popstar.dpc.data.model.PasswordEnforcementMode
+import com.popstar.dpc.data.security.PasswordHasher
 
 @Composable
 fun SetupPasswordScreen(onCreate: (password: String, mode: PasswordEnforcementMode, days: Int) -> Unit) {
@@ -44,13 +45,15 @@ fun SetupPasswordScreen(onCreate: (password: String, mode: PasswordEnforcementMo
                 }
                 error.value?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                 Button(onClick = {
-                    if (password.value.length < 8) {
-                        error.value = "Password must be at least 8 chars"
-                        return@Button
-                    }
-                    if (password.value != confirm.value) {
-                        error.value = "Passwords do not match"
-                        return@Button
+                    if (mode.value != PasswordEnforcementMode.DISABLED) {
+                        PasswordHasher.validationError(password.value)?.let {
+                            error.value = it
+                            return@Button
+                        }
+                        if (password.value != confirm.value) {
+                            error.value = "Passwords do not match"
+                            return@Button
+                        }
                     }
                     onCreate(password.value, mode.value, days.value.toIntOrNull() ?: 0)
                 }) { Text("Save") }

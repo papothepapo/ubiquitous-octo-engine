@@ -64,11 +64,13 @@ object PacketParsers {
         if (ipv4.protocol != 6) return null // TCP only
 
         val tcpStart = ipv4.transportOffset
+        if (tcpStart + 13 > length) return null
         val srcPort = readU16(packet, tcpStart)
         val dstPort = readU16(packet, tcpStart + 2)
         if (srcPort != 443 && dstPort != 443) return null
 
         val dataOffset = ((packet[tcpStart + 12].toInt() ushr 4) and 0x0F) * 4
+        if (dataOffset < 20) return null
         val tlsStart = tcpStart + dataOffset
         if (tlsStart + 5 > length) return null
 

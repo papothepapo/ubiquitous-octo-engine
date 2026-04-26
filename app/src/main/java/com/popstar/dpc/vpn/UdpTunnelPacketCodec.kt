@@ -35,6 +35,7 @@ object UdpTunnelPacketCodec {
         val destPort = u16(packet, ihl + 2)
 
         val udpLen = u16(packet, ihl + 4)
+        if (udpLen < 8) return null
         val payloadLen = (udpLen - 8).coerceAtLeast(0)
         if (ihl + 8 + payloadLen > length) return null
 

@@ -8,15 +8,22 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import com.popstar.dpc.data.model.AppThemeMode
 
-private val Purple = Color(0xFFB388FF)
 private val LightScheme = lightColorScheme(
-    primary = Purple,
-    secondary = Color(0xFFD1C4E9),
-    background = Color.White
+    primary = Color(0xFF115E67),
+    onPrimary = Color.White,
+    secondary = Color(0xFF4B5F8C),
+    tertiary = Color(0xFF8A5A17),
+    background = Color(0xFFF7F9FB),
+    surface = Color.White,
+    surfaceVariant = Color(0xFFE3E8EF)
 )
 private val DarkScheme = darkColorScheme(
-    primary = Purple,
-    secondary = Color(0xFF7E57C2)
+    primary = Color(0xFF65D6E2),
+    secondary = Color(0xFFB9C7F4),
+    tertiary = Color(0xFFFFC46B),
+    background = Color(0xFF101418),
+    surface = Color(0xFF171C22),
+    surfaceVariant = Color(0xFF303842)
 )
 
 @Composable

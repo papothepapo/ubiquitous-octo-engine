@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import com.popstar.dpc.data.model.AppThemeMode
 import com.popstar.dpc.data.model.AuditLogEntry
 import com.popstar.dpc.data.model.PasswordEnforcementMode
+import com.popstar.dpc.data.security.PasswordHasher
 import java.text.DateFormat
 import java.util.Date
 
@@ -145,13 +146,15 @@ fun SettingsScreen(
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = {
-                            if (mode.value != PasswordEnforcementMode.DISABLED && password.value.length < 8) {
-                                passwordStatus.value = "Password must be at least 8 chars"
-                                return@Button
-                            }
-                            if (mode.value != PasswordEnforcementMode.DISABLED && password.value != confirm.value) {
-                                passwordStatus.value = "Passwords do not match"
-                                return@Button
+                            if (mode.value != PasswordEnforcementMode.DISABLED) {
+                                PasswordHasher.validationError(password.value)?.let {
+                                    passwordStatus.value = it
+                                    return@Button
+                                }
+                                if (password.value != confirm.value) {
+                                    passwordStatus.value = "Passwords do not match"
+                                    return@Button
+                                }
                             }
                             passwordStatus.value = onSetPassword(password.value, mode.value, days.value.toIntOrNull() ?: 0)
                         }) { Text("Save password policy") }
@@ -204,7 +207,7 @@ fun SettingsScreen(
                     }
                     if (logsExpanded) {
                         auditLogs.takeLast(25).asReversed().forEach { log ->
-                            Text("${DateFormat.getDateTimeInstance().format(Date(log.timestamp))}: ${log.action} — ${log.details}")
+                            Text("${DateFormat.getDateTimeInstance().format(Date(log.timestamp))}: ${log.action} - ${log.details}")
                         }
                     }
                 }
