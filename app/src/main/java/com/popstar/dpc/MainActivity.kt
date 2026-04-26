@@ -154,7 +154,6 @@ class MainActivity : ComponentActivity() {
                         bundle = bundle,
                         installedApps = installedApps,
                         deviceAdmins = deviceAdmins,
-                        onRefreshDeviceAdmins = { deviceAdmins = devicePolicyEngine.getActiveAdmins() },
                         onBundleChange = {
                             bundle = it
                             FirewallRuntime.rules = it.firewallRules
@@ -226,7 +225,6 @@ private fun MainTabs(
     bundle: PolicyBundle,
     installedApps: List<InstalledAppInfo>,
     deviceAdmins: List<DeviceAdminEntry>,
-    onRefreshDeviceAdmins: () -> Unit,
     onBundleChange: (PolicyBundle) -> Unit,
     policyStorage: PolicyStorage,
     devicePolicyEngine: DevicePolicyEngine,

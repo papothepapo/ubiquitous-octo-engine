@@ -167,6 +167,7 @@ class DevicePolicyEngine(private val context: Context) {
         return when {
             isDeviceOwnerApp() -> runCatching {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    @Suppress("DEPRECATION")
                     dpm.clearDeviceOwnerApp(context.packageName)
                     "Device owner removal requested"
                 } else {
