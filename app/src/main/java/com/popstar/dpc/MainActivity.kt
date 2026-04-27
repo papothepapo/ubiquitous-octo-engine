@@ -54,6 +54,7 @@ import com.popstar.dpc.data.model.AppRule
 import com.popstar.dpc.data.model.PasswordEnforcementMode
 import com.popstar.dpc.data.model.PasswordPolicy
 import com.popstar.dpc.data.model.PolicyBundle
+import com.popstar.dpc.data.policy.DefaultPolicyFactory
 import com.popstar.dpc.data.policy.DeviceAdminEntry
 import com.popstar.dpc.data.policy.DevicePolicyEngine
 import com.popstar.dpc.data.policy.PolicyStorage
@@ -92,15 +93,32 @@ class MainActivity : ComponentActivity() {
             PopstarTheme(themeMode = bundle.themeMode) {
                 LaunchedEffect(Unit) {
                     try {
-                        val loadedBundle = withContext(Dispatchers.IO) { policyStorage.load().recordOpenEvent() }
+                        val hasSavedPolicy = withContext(Dispatchers.IO) { policyStorage.hasSavedPolicy() }
+                        val savedBundle = withContext(Dispatchers.IO) { policyStorage.load() }
                         val loadedApps = withContext(Dispatchers.IO) { loadInstalledApps(packageManager) }
+                        val loadedBundle = if (hasSavedPolicy) {
+                            savedBundle
+                        } else {
+                            DefaultPolicyFactory.defaultDeny(
+                                installedPackages = loadedApps.map { it.packageName },
+                                ownPackage = packageName
+                            )
+                        }.recordOpenEvent()
                         bundle = loadedBundle
                         installedApps = loadedApps
                         withContext(Dispatchers.IO) { policyStorage.save(loadedBundle) }
                         deviceAdmins = devicePolicyEngine.getActiveAdmins()
-                        FirewallRuntime.rules = loadedBundle.firewallRules
-                        FirewallRuntime.blockedPackages = networkBlockedPackages(loadedBundle.appRules, packageName)
-                        FirewallRuntime.restore(loadedBundle.vpnLogs)
+                        refreshFirewallRuntime(loadedBundle, loadedApps, packageName)
+
+                        if (!hasSavedPolicy && devicePolicyEngine.isAdminActive()) {
+                            devicePolicyEngine.applyRestrictions(loadedBundle.restrictionPolicy)
+                            devicePolicyEngine.applyAppControlRules(loadedBundle.appRules)
+                            devicePolicyEngine.applyVpnLockdown(
+                                config = loadedBundle.vpnLockdown,
+                                appRules = loadedBundle.appRules,
+                                installedPackages = loadedApps.map { it.packageName }.toSet()
+                            )
+                        }
 
                         val record = secureStore.getPasswordRecord()
                         val passwordRequired = PasswordPolicyEvaluator.isPasswordRequired(
@@ -158,9 +176,7 @@ class MainActivity : ComponentActivity() {
                         deviceAdmins = deviceAdmins,
                         onBundleChange = {
                             bundle = it
-                            FirewallRuntime.rules = it.firewallRules
-                            FirewallRuntime.blockedPackages = networkBlockedPackages(it.appRules, packageName)
-                            FirewallRuntime.restore(it.vpnLogs)
+                            refreshFirewallRuntime(it, installedApps, packageName)
                             policyStorage.save(it)
                         },
                         policyStorage = policyStorage,
@@ -623,4 +639,29 @@ private fun networkBlockedPackages(appRules: List<AppRule>, ownPackage: String):
         .map { it.packageName }
         .filter { it.isNotBlank() && it != ownPackage }
         .toSet()
+}
+
+private fun networkBypassPackages(
+    appRules: List<AppRule>,
+    installedApps: List<InstalledAppInfo>,
+    ownPackage: String
+): Set<String> {
+    val blockedPackages = networkBlockedPackages(appRules, ownPackage)
+    return installedApps
+        .asSequence()
+        .map { it.packageName }
+        .filter { it.isNotBlank() && it !in blockedPackages }
+        .plus(ownPackage)
+        .toSet()
+}
+
+private fun refreshFirewallRuntime(
+    bundle: PolicyBundle,
+    installedApps: List<InstalledAppInfo>,
+    ownPackage: String
+) {
+    FirewallRuntime.rules = bundle.firewallRules
+    FirewallRuntime.blockedPackages = networkBlockedPackages(bundle.appRules, ownPackage)
+    FirewallRuntime.bypassPackages = networkBypassPackages(bundle.appRules, installedApps, ownPackage)
+    FirewallRuntime.restore(bundle.vpnLogs)
 }

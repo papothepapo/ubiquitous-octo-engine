@@ -92,6 +92,9 @@ class PopstarVpnService : VpnService() {
                 }
             } else {
                 legacyBlockedAppSinkActive = false
+                if (usesBroadLockdownRoutes()) {
+                    addBypassPackages(builder)
+                }
                 addTargetRoutes(builder)
             }
 
@@ -108,6 +111,19 @@ class PopstarVpnService : VpnService() {
         ruleEngine.routedIpRules(FirewallRuntime.rules).forEach { route ->
             runCatching { builder.addRoute(route.address, route.prefixLength) }
         }
+    }
+
+    private fun addBypassPackages(builder: Builder) {
+        FirewallRuntime.bypassPackages.forEach { packageName ->
+            runCatching { builder.addDisallowedApplication(packageName) }
+        }
+    }
+
+    private fun usesBroadLockdownRoutes(): Boolean {
+        val routes = ruleEngine.routedIpRules(FirewallRuntime.rules)
+            .map { "${it.address}/${it.prefixLength}" }
+            .toSet()
+        return "0.0.0.0/1" in routes && "128.0.0.0/1" in routes
     }
 
     private fun rebuildVpnInterface() {

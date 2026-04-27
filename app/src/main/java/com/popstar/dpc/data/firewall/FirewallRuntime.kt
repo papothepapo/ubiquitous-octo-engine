@@ -13,6 +13,9 @@ object FirewallRuntime {
     @Volatile
     var blockedPackages: Set<String> = emptySet()
 
+    @Volatile
+    var bypassPackages: Set<String> = emptySet()
+
     private val blockedEvents = ArrayDeque<VpnLogEntry>(MAX_BLOCKED_EVENTS)
 
     fun logBlocked(

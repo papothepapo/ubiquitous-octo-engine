@@ -19,6 +19,8 @@ class PolicyStorage(
     private val cryptoManager: CryptoManager,
     private val json: Json = Json { ignoreUnknownKeys = true; prettyPrint = true }
 ) {
+    fun hasSavedPolicy(): Boolean = secureStore.getEncryptedPolicy() != null
+
     fun load(): PolicyBundle {
         val encrypted = secureStore.getEncryptedPolicy() ?: return PolicyBundle()
         return decodeBundle(encrypted) ?: PolicyBundle()
