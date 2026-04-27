@@ -503,7 +503,7 @@ private fun MainTabs(
                     enforcementStatus = enforcementStatus,
                     vpnAutoStart = bundle.vpnAutoStart,
                     auditLogs = bundle.logs,
-                    transferOwnerInstructions = "Export the encrypted policy, provision the new owner device, then import the policy there before removing admin/owner here.",
+                    transferOwnerInstructions = "Encrypted exports are tied to this device's Android Keystore and can only be restored by this app install.",
                     onVpnAutoStartChanged = { enabled -> updateBundle { current -> current.copy(vpnAutoStart = enabled) } },
                     onExport = { exportLauncher.launch("popstar-policy.enc.json") },
                     onImport = { importLauncher.launch(arrayOf("application/json", "text/plain")) },

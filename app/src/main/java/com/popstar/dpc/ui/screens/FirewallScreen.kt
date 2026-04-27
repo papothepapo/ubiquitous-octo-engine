@@ -79,7 +79,7 @@ fun FirewallScreen(
         item {
             ElevatedCard {
                 Column(Modifier.fillMaxWidth().padding(12.dp)) {
-                    Text("Domain / URL blocking", style = MaterialTheme.typography.titleMedium)
+                    Text("Domain blocking", style = MaterialTheme.typography.titleMedium)
                     Text("Rules are saved immediately, but traffic and policy enforcement changes only fully apply after Apply changes where applicable.")
                     OutlinedTextField(
                         value = pattern.value,
