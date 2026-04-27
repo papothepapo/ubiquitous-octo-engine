@@ -92,7 +92,7 @@ fun FirewallScreen(
             pattern = trimmedPattern,
             appPackage = appScope.trim().ifBlank { null },
             block = blockRule,
-            priority = editingRule?.priority ?: ((rules.maxOfOrNull { it.priority } ?: 0) + 1),
+            priority = editingRule?.priority ?: nextRulePriority(rules, blockRule),
             type = selectedType,
             enabled = enabledRule
         )
@@ -124,7 +124,7 @@ fun FirewallScreen(
                         StatText("Allowed", blockedEvents.count { it.action == "ALLOW" }.toString(), Modifier.weight(1f))
                     }
                     vpnStatus?.let { Text("Status: $it") }
-                    Text("Targeted IP routing only auto-routes global IP block rules. App-scoped IP rules apply when matching traffic is already captured by the VPN.")
+                    Text("Default deny routes broad IP block rules through the VPN. Apps marked as allowed can bypass those routes after you apply changes.")
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(onClick = onStartVpn) { Text("Start / refresh") }
                         Button(onClick = onStopVpn) { Text("Stop") }
@@ -282,4 +282,15 @@ private fun eventDestination(event: VpnLogEntry): String {
     val port = event.destPort?.let { ":$it" }.orEmpty()
     val protocol = event.protocol?.let { "$it " }.orEmpty()
     return "$protocol$target$port - ${event.details}"
+}
+
+private fun nextRulePriority(rules: List<FirewallRule>, blockRule: Boolean): Int {
+    if (blockRule) return (rules.maxOfOrNull { it.priority } ?: 0) + 1
+    val firstBlockPriority = rules
+        .asSequence()
+        .filter { it.block }
+        .map { it.priority }
+        .minOrNull()
+        ?: return 0
+    return firstBlockPriority - 1
 }
