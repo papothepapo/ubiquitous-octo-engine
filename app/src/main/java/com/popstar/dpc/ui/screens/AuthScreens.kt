@@ -14,7 +14,7 @@ import com.popstar.dpc.data.model.PasswordEnforcementMode
 import com.popstar.dpc.data.security.PasswordHasher
 
 @Composable
-fun SetupPasswordScreen(onCreate: (password: String, mode: PasswordEnforcementMode, days: Int) -> Unit) {
+fun SetupPasswordScreen(onCreate: (password: String, mode: PasswordEnforcementMode, days: Int) -> String?) {
     val password = remember { mutableStateOf("") }
     val confirm = remember { mutableStateOf("") }
     val mode = remember { mutableStateOf(PasswordEnforcementMode.PERSISTENT) }
@@ -55,7 +55,12 @@ fun SetupPasswordScreen(onCreate: (password: String, mode: PasswordEnforcementMo
                             return@Button
                         }
                     }
-                    onCreate(password.value, mode.value, days.value.toIntOrNull() ?: 0)
+                    val timedDays = days.value.toIntOrNull() ?: 0
+                    if (mode.value == PasswordEnforcementMode.TIMED && timedDays < 1) {
+                        error.value = "Timed password duration must be at least 1 day"
+                        return@Button
+                    }
+                    onCreate(password.value, mode.value, timedDays)?.let { error.value = it }
                 }) { Text("Save") }
             }
         }

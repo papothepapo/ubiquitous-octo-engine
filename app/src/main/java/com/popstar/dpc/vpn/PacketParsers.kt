@@ -16,6 +16,7 @@ object PacketParsers {
         val ipv4 = ipv4(packet, length) ?: return null
         val protocol = ipv4.protocol
         if (protocol != 6 && protocol != 17) return null
+        if (length < ipv4.transportOffset + 4) return null
 
         val sourceIp = ByteBuffer.wrap(packet, 12, 4).int
         val destIp = ByteBuffer.wrap(packet, 16, 4).int
@@ -47,6 +48,8 @@ object PacketParsers {
         val labels = mutableListOf<String>()
         while (index < length) {
             val size = packet[index].toInt() and 0xFF
+            if (size and 0xC0 != 0) return null
+            if (size > 63) return null
             if (size == 0) {
                 return if (labels.isEmpty()) null else labels.joinToString(".").lowercase()
             }
@@ -142,6 +145,7 @@ object PacketParsers {
         val version = (packet[0].toInt() ushr 4) and 0x0F
         if (version != 4) return null
         val ihl = (packet[0].toInt() and 0x0F) * 4
+        if (ihl < 20) return null
         if (length < ihl + 8) return null
         val protocol = packet[9].toInt() and 0xFF
         return Ipv4(ihl, protocol)

@@ -23,7 +23,8 @@ class FirewallRuleEngine {
             return host == suffix || host.endsWith(".$suffix")
         }
         if (normalizedPattern.startsWith("*")) {
-            return host.endsWith(normalizedPattern.removePrefix("*"))
+            val suffix = normalizedPattern.removePrefix("*")
+            return host == suffix || host.endsWith(".$suffix")
         }
         return host == normalizedPattern
     }
@@ -42,6 +43,7 @@ class FirewallRuleEngine {
             .substringBefore('/')
             .substringBefore('?')
             .substringBefore('#')
+            .substringBefore(':')
             .trim()
             .trimEnd('.')
             .lowercase()

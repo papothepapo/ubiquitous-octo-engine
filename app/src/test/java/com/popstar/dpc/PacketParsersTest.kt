@@ -45,6 +45,22 @@ class PacketParsersTest {
         assertNull(PacketParsers.extractDnsQueryHost(packet, packet.size))
     }
 
+    @Test
+    fun returnsNullForInvalidIpv4HeaderLength() {
+        val packet = buildDnsQueryPacket("ads.example.com")
+        packet[0] = 0x41 // IPv4 with invalid 4-byte IHL.
+        assertNull(PacketParsers.extractConnectionMetadata(packet, packet.size))
+        assertNull(PacketParsers.extractDnsQueryHost(packet, packet.size))
+        assertNull(PacketParsers.extractTlsSniHost(packet, packet.size))
+    }
+
+    @Test
+    fun returnsNullForCompressedDnsQueryName() {
+        val packet = buildDnsQueryPacket("ads.example.com")
+        packet[28 + 12] = 0xC0.toByte()
+        assertNull(PacketParsers.extractDnsQueryHost(packet, packet.size))
+    }
+
     private fun buildDnsQueryPacket(host: String): ByteArray {
         val labels = host.split('.')
         val qname = mutableListOf<Byte>()

@@ -3,6 +3,7 @@ package com.popstar.dpc
 import com.popstar.dpc.vpn.DnsTunnelPacketCodec
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class DnsTunnelPacketCodecTest {
@@ -20,6 +21,13 @@ class DnsTunnelPacketCodecTest {
         val responsePacket = DnsTunnelPacketCodec.buildResponse(query!!, dnsResponse)
         assertEquals(20 + 8 + dnsResponse.size, responsePacket.size)
         assertEquals(17, responsePacket[9].toInt() and 0xFF)
+    }
+
+    @Test
+    fun returnsNullForInvalidIpv4HeaderLength() {
+        val queryPacket = buildDnsUdpPacket()
+        queryPacket[0] = 0x41
+        assertNull(DnsTunnelPacketCodec.parseQuery(queryPacket, queryPacket.size))
     }
 
     private fun buildDnsUdpPacket(): ByteArray {

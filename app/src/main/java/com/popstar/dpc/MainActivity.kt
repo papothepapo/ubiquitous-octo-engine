@@ -50,6 +50,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.popstar.dpc.auth.PasswordPolicyEvaluator
 import com.popstar.dpc.data.firewall.FirewallRuntime
+import com.popstar.dpc.data.model.AppRule
 import com.popstar.dpc.data.model.FirewallRule
 import com.popstar.dpc.data.model.PasswordEnforcementMode
 import com.popstar.dpc.data.model.PasswordPolicy
@@ -99,10 +100,7 @@ class MainActivity : ComponentActivity() {
                         withContext(Dispatchers.IO) { policyStorage.save(loadedBundle) }
                         deviceAdmins = devicePolicyEngine.getActiveAdmins()
                         FirewallRuntime.rules = loadedBundle.firewallRules
-                        FirewallRuntime.blockedPackages = loadedBundle.appRules
-                            .filter { it.networkBlocked }
-                            .map { it.packageName }
-                            .toSet()
+                        FirewallRuntime.blockedPackages = networkBlockedPackages(loadedBundle.appRules, packageName)
                         FirewallRuntime.restore(loadedBundle.vpnLogs)
 
                         val record = secureStore.getPasswordRecord()
@@ -123,22 +121,27 @@ class MainActivity : ComponentActivity() {
                 when (authState) {
                     AuthState.LOADING -> SplashLoadingScreen()
                     AuthState.SETUP -> SetupPasswordScreen { password, mode, days ->
-                        if (mode == PasswordEnforcementMode.DISABLED) {
-                            secureStore.clearPasswordRecord()
-                        } else {
-                            val record = PasswordHasher.create(password)
-                            secureStore.savePasswordRecord(record)
-                        }
-                        val updated = bundle.copy(
-                            passwordPolicy = PasswordPolicy(
-                                mode = mode,
-                                timedDays = days,
-                                enabledAtEpochMs = System.currentTimeMillis()
+                        runCatching {
+                            if (mode == PasswordEnforcementMode.DISABLED) {
+                                secureStore.clearPasswordRecord()
+                            } else {
+                                val record = PasswordHasher.create(password)
+                                secureStore.savePasswordRecord(record)
+                            }
+                            val updated = bundle.copy(
+                                passwordPolicy = PasswordPolicy(
+                                    mode = mode,
+                                    timedDays = days,
+                                    enabledAtEpochMs = System.currentTimeMillis()
+                                )
                             )
+                            bundle = updated
+                            policyStorage.save(updated)
+                            authState = AuthState.UNLOCKED
+                        }.fold(
+                            onSuccess = { null },
+                            onFailure = { "Setup failed: ${it.message}" }
                         )
-                        bundle = updated
-                        policyStorage.save(updated)
-                        authState = AuthState.UNLOCKED
                     }
 
                     AuthState.LOCKED -> UnlockScreen { entered ->
@@ -157,10 +160,7 @@ class MainActivity : ComponentActivity() {
                         onBundleChange = {
                             bundle = it
                             FirewallRuntime.rules = it.firewallRules
-                            FirewallRuntime.blockedPackages = it.appRules
-                                .filter { rule -> rule.networkBlocked }
-                                .map { rule -> rule.packageName }
-                                .toSet()
+                            FirewallRuntime.blockedPackages = networkBlockedPackages(it.appRules, context.packageName)
                             FirewallRuntime.restore(it.vpnLogs)
                             policyStorage.save(it)
                         },
@@ -180,12 +180,17 @@ class MainActivity : ComponentActivity() {
                             if (failures.isEmpty()) "Policies applied" else failures.joinToString("; ")
                         },
                         onDisablePassword = {
-                            secureStore.clearPasswordRecord()
-                            val updated = bundle.copy(
-                                passwordPolicy = bundle.passwordPolicy.copy(mode = PasswordEnforcementMode.DISABLED)
+                            runCatching {
+                                secureStore.clearPasswordRecord()
+                                val updated = bundle.copy(
+                                    passwordPolicy = bundle.passwordPolicy.copy(mode = PasswordEnforcementMode.DISABLED)
+                                )
+                                bundle = updated
+                                policyStorage.save(updated)
+                            }.fold(
+                                onSuccess = { "Password disabled" },
+                                onFailure = { "Disable password failed: ${it.message}" }
                             )
-                            bundle = updated
-                            policyStorage.save(updated)
                         }
                     )
                 }
@@ -229,7 +234,7 @@ private fun MainTabs(
     policyStorage: PolicyStorage,
     devicePolicyEngine: DevicePolicyEngine,
     onApplyPolicies: () -> String?,
-    onDisablePassword: () -> Unit
+    onDisablePassword: () -> String
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -257,9 +262,11 @@ private fun MainTabs(
         ActivityResultContracts.CreateDocument("application/json")
     ) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
-        val payload = policyStorage.exportEncryptedPolicy(bundle.copy(vpnLogs = FirewallRuntime.events()))
         runCatching {
-            context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(payload) }
+            val payload = policyStorage.exportEncryptedPolicy(bundle.copy(vpnLogs = FirewallRuntime.events()))
+            val output = context.contentResolver.openOutputStream(uri)
+                ?: error("Could not open export file")
+            output.bufferedWriter().use { it.write(payload) }
         }.onSuccess {
             importExportStatus = "Exported encrypted policy"
             showMessage(importExportStatus!!)
@@ -272,9 +279,11 @@ private fun MainTabs(
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
         runCatching {
-            context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+            val input = context.contentResolver.openInputStream(uri)
+                ?: error("Could not open import file")
+            input.bufferedReader().use { it.readText() }
         }.onSuccess { payload ->
-            val parsed = payload?.let { policyStorage.importEncryptedPolicy(it) }
+            val parsed = policyStorage.importEncryptedPolicy(payload)
             if (parsed != null) {
                 onBundleChange(parsed)
                 importExportStatus = "Imported encrypted policy"
@@ -471,20 +480,23 @@ private fun MainTabs(
                     onSetPassword = { password, mode, days ->
                         if (mode == PasswordEnforcementMode.DISABLED) {
                             onDisablePassword()
-                            "Password disabled"
                         } else {
-                            val record = PasswordHasher.create(password)
-                            updateBundle {
-                                it.copy(
-                                    passwordPolicy = it.passwordPolicy.copy(
-                                        mode = mode,
-                                        timedDays = days,
-                                        enabledAtEpochMs = System.currentTimeMillis()
+                            runCatching {
+                                val record = PasswordHasher.create(password)
+                                SecureStore(context).savePasswordRecord(record)
+                                updateBundle {
+                                    it.copy(
+                                        passwordPolicy = it.passwordPolicy.copy(
+                                            mode = mode,
+                                            timedDays = days,
+                                            enabledAtEpochMs = System.currentTimeMillis()
+                                        )
                                     )
-                                )
-                            }
-                            SecureStore(context).savePasswordRecord(record)
-                            "Password policy saved"
+                                }
+                            }.fold(
+                                onSuccess = { "Password policy saved" },
+                                onFailure = { "Password save failed: ${it.message}" }
+                            )
                         }
                     },
                     importExportStatus = importExportStatus,
@@ -577,4 +589,13 @@ private fun packageProvidesVpnService(pm: PackageManager, packageName: String): 
     }.getOrNull() ?: return false
 
     return info.services?.any { it.permission == android.Manifest.permission.BIND_VPN_SERVICE } == true
+}
+
+private fun networkBlockedPackages(appRules: List<AppRule>, ownPackage: String): Set<String> {
+    return appRules
+        .asSequence()
+        .filter { it.networkBlocked }
+        .map { it.packageName }
+        .filter { it.isNotBlank() && it != ownPackage }
+        .toSet()
 }

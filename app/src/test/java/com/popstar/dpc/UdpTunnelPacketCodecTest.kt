@@ -3,6 +3,7 @@ package com.popstar.dpc
 import com.popstar.dpc.vpn.UdpTunnelPacketCodec
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class UdpTunnelPacketCodecTest {
@@ -29,6 +30,19 @@ class UdpTunnelPacketCodecTest {
         assertEquals(17, responsePacket[9].toInt() and 0xFF)
         assertEquals(123, u16(responsePacket, 20))
         assertEquals(40000, u16(responsePacket, 22))
+    }
+
+    @Test
+    fun returnsNullForInvalidIpv4HeaderLength() {
+        val requestPacket = buildUdpPacket(
+            srcIp = byteArrayOf(10, 66, 0, 2),
+            dstIp = byteArrayOf(8, 8, 8, 8),
+            srcPort = 40000,
+            dstPort = 123,
+            payload = "hello".toByteArray()
+        )
+        requestPacket[0] = 0x41
+        assertNull(UdpTunnelPacketCodec.parsePacket(requestPacket, requestPacket.size))
     }
 
     private fun buildUdpPacket(

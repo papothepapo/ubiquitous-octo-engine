@@ -40,7 +40,8 @@ class PopstarVpnService : VpnService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
             running.set(false)
-            vpnInterface?.close()
+            closeVpnInterface()
+            stopWorker(join = false)
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return Service.START_NOT_STICKY
@@ -103,13 +104,20 @@ class PopstarVpnService : VpnService() {
     }
 
     private fun rebuildVpnInterface() {
-        worker?.interrupt()
-        worker = null
-        runCatching { vpnInterface?.close() }
-        vpnInterface = buildVpnInterface()
-        if (vpnInterface != null) {
-            startReadLoop()
+        closeVpnInterface()
+        stopWorker(join = true)
+
+        val nextInterface = buildVpnInterface()
+        if (nextInterface == null) {
+            running.set(false)
+            legacyBlockedAppSinkActive = false
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return
         }
+
+        vpnInterface = nextInterface
+        startReadLoop()
     }
 
     private fun startReadLoop() {
@@ -235,7 +243,8 @@ class PopstarVpnService : VpnService() {
 
     override fun onRevoke() {
         running.set(false)
-        vpnInterface?.close()
+        closeVpnInterface()
+        stopWorker(join = false)
         stopForeground(STOP_FOREGROUND_REMOVE)
         super.onRevoke()
         stopSelf()
@@ -243,11 +252,24 @@ class PopstarVpnService : VpnService() {
 
     override fun onDestroy() {
         running.set(false)
-        worker?.interrupt()
-        worker = null
-        vpnInterface?.close()
+        closeVpnInterface()
+        stopWorker(join = false)
         stopForeground(STOP_FOREGROUND_REMOVE)
         super.onDestroy()
+    }
+
+    private fun closeVpnInterface() {
+        runCatching { vpnInterface?.close() }
+        vpnInterface = null
+    }
+
+    private fun stopWorker(join: Boolean) {
+        val oldWorker = worker
+        worker = null
+        oldWorker?.interrupt()
+        if (join && oldWorker != null && oldWorker != Thread.currentThread()) {
+            runCatching { oldWorker.join(WORKER_JOIN_TIMEOUT_MS) }
+        }
     }
 
     private fun buildNotification(): Notification {
@@ -285,6 +307,7 @@ class PopstarVpnService : VpnService() {
             "208.67.220.220"
         )
         private const val LEGACY_SINK_LOG_INTERVAL_MS = 2_000L
+        private const val WORKER_JOIN_TIMEOUT_MS = 500L
 
         fun startIntent(context: android.content.Context): Intent = Intent(context, PopstarVpnService::class.java)
 

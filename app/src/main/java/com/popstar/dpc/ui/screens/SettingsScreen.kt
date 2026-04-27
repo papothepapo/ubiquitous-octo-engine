@@ -38,7 +38,7 @@ fun SettingsScreen(
     supportShortMessage: String,
     supportLongMessage: String,
     onSupportMessagesChanged: (String, String) -> Unit,
-    onDisablePassword: () -> Unit,
+    onDisablePassword: () -> String,
     onSetPassword: (password: String, mode: PasswordEnforcementMode, days: Int) -> String?,
     importExportStatus: String?,
     enforcementStatus: String?,
@@ -156,13 +156,17 @@ fun SettingsScreen(
                                     return@Button
                                 }
                             }
-                            passwordStatus.value = onSetPassword(password.value, mode.value, days.value.toIntOrNull() ?: 0)
+                            val timedDays = days.value.toIntOrNull() ?: 0
+                            if (mode.value == PasswordEnforcementMode.TIMED && timedDays < 1) {
+                                passwordStatus.value = "Timed password duration must be at least 1 day"
+                                return@Button
+                            }
+                            passwordStatus.value = onSetPassword(password.value, mode.value, timedDays)
                         }) { Text("Save password policy") }
                         Button(onClick = {
                             password.value = ""
                             confirm.value = ""
-                            passwordStatus.value = "Password disabled"
-                            onDisablePassword()
+                            passwordStatus.value = onDisablePassword()
                         }) { Text("Disable password") }
                     }
                     passwordStatus.value?.let { Text(it) }

@@ -21,9 +21,23 @@ class FirewallRuleEngineTest {
     }
 
     @Test
+    fun starPrefixRequiresDomainBoundary() {
+        val rules = listOf(FirewallRule("1", "*example.com", block = true, priority = 1))
+        assertTrue(engine.shouldBlock("example.com", null, rules))
+        assertTrue(engine.shouldBlock("cdn.example.com", null, rules))
+        assertFalse(engine.shouldBlock("badexample.com", null, rules))
+    }
+
+    @Test
     fun normalizesUrlPatternAndHost() {
         val rules = listOf(FirewallRule("1", "https://Example.com/path", block = true, priority = 1))
         assertTrue(engine.shouldBlock("example.com.", null, rules))
+    }
+
+    @Test
+    fun normalizesUrlPatternAndHostWithPorts() {
+        val rules = listOf(FirewallRule("1", "https://Example.com:443/path", block = true, priority = 1))
+        assertTrue(engine.shouldBlock("example.com:443/index", null, rules))
     }
 
     @Test

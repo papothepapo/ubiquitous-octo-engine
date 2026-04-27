@@ -18,10 +18,11 @@ class SecureStore(context: Context) {
     )
 
     fun savePasswordRecord(record: PasswordRecord) {
-        prefs.edit()
+        val saved = prefs.edit()
             .putString(KEY_PASSWORD_HASH, record.hashBase64)
             .putString(KEY_PASSWORD_SALT, record.saltBase64)
             .commit()
+        check(saved) { "Secure password storage write failed" }
     }
 
     fun getPasswordRecord(): PasswordRecord? {
@@ -31,10 +32,15 @@ class SecureStore(context: Context) {
     }
 
     fun clearPasswordRecord() {
-        prefs.edit().remove(KEY_PASSWORD_HASH).remove(KEY_PASSWORD_SALT).commit()
+        val cleared = prefs.edit().remove(KEY_PASSWORD_HASH).remove(KEY_PASSWORD_SALT).commit()
+        check(cleared) { "Secure password storage clear failed" }
     }
 
-    fun saveEncryptedPolicy(blob: String) = prefs.edit().putString(KEY_POLICY_BLOB, blob).apply()
+    fun saveEncryptedPolicy(blob: String) {
+        val saved = prefs.edit().putString(KEY_POLICY_BLOB, blob).commit()
+        check(saved) { "Secure policy storage write failed" }
+    }
+
     fun getEncryptedPolicy(): String? = prefs.getString(KEY_POLICY_BLOB, null)
 
     companion object {

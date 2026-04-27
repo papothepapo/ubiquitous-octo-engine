@@ -20,6 +20,7 @@ object DnsTunnelPacketCodec {
         val version = (packet[0].toInt() ushr 4) and 0x0F
         if (version != 4) return null
         val ihl = (packet[0].toInt() and 0x0F) * 4
+        if (ihl < 20) return null
         if (length < ihl + 8) return null
         val protocol = packet[9].toInt() and 0xFF
         if (protocol != 17) return null
