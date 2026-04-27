@@ -160,7 +160,7 @@ class MainActivity : ComponentActivity() {
                         onBundleChange = {
                             bundle = it
                             FirewallRuntime.rules = it.firewallRules
-                            FirewallRuntime.blockedPackages = networkBlockedPackages(it.appRules, context.packageName)
+                            FirewallRuntime.blockedPackages = networkBlockedPackages(it.appRules, packageName)
                             FirewallRuntime.restore(it.vpnLogs)
                             policyStorage.save(it)
                         },
