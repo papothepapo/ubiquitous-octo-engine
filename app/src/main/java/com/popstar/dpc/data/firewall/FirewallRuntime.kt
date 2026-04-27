@@ -15,7 +15,68 @@ object FirewallRuntime {
 
     private val blockedEvents = ArrayDeque<VpnLogEntry>(MAX_BLOCKED_EVENTS)
 
-    fun logBlocked(category: String, appPackage: String? = null, site: String? = null, details: String) {
+    fun logBlocked(
+        category: String,
+        appPackage: String? = null,
+        site: String? = null,
+        details: String,
+        destIp: String? = null,
+        destPort: Int? = null,
+        protocol: String? = null,
+        ruleId: String? = null,
+        rulePattern: String? = null
+    ) {
+        logEvent(
+            category = category,
+            action = "BLOCK",
+            appPackage = appPackage,
+            site = site,
+            details = details,
+            destIp = destIp,
+            destPort = destPort,
+            protocol = protocol,
+            ruleId = ruleId,
+            rulePattern = rulePattern
+        )
+    }
+
+    fun logAllowed(
+        category: String,
+        appPackage: String? = null,
+        site: String? = null,
+        details: String,
+        destIp: String? = null,
+        destPort: Int? = null,
+        protocol: String? = null,
+        ruleId: String? = null,
+        rulePattern: String? = null
+    ) {
+        logEvent(
+            category = category,
+            action = "ALLOW",
+            appPackage = appPackage,
+            site = site,
+            details = details,
+            destIp = destIp,
+            destPort = destPort,
+            protocol = protocol,
+            ruleId = ruleId,
+            rulePattern = rulePattern
+        )
+    }
+
+    private fun logEvent(
+        category: String,
+        action: String,
+        appPackage: String?,
+        site: String?,
+        details: String,
+        destIp: String?,
+        destPort: Int?,
+        protocol: String?,
+        ruleId: String?,
+        rulePattern: String?
+    ) {
         synchronized(blockedEvents) {
             blockedEvents.addFirst(
                 VpnLogEntry(
@@ -23,7 +84,13 @@ object FirewallRuntime {
                     category = category,
                     appPackage = appPackage,
                     site = site,
-                    details = details
+                    details = details,
+                    destIp = destIp,
+                    destPort = destPort,
+                    protocol = protocol,
+                    ruleId = ruleId,
+                    rulePattern = rulePattern,
+                    action = action
                 )
             )
             while (blockedEvents.size > MAX_BLOCKED_EVENTS) {

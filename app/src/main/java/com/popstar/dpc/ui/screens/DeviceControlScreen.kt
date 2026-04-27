@@ -42,6 +42,7 @@ fun DeviceControlScreen(
     installedApps: List<InstalledAppInfo>,
     appRules: List<AppRule>,
     deviceAdmins: List<DeviceAdminEntry>,
+    ownPackage: String,
     onAppRulesChanged: (List<AppRule>) -> Unit,
     onRestrictionChanged: (RestrictionPolicy) -> Unit,
     onAppAction: (String) -> Unit,
@@ -83,6 +84,7 @@ fun DeviceControlScreen(
     }
 
     fun updateRule(packageName: String, transform: (AppRule) -> AppRule) {
+        if (packageName == ownPackage) return
         val current = appRules.associateBy { it.packageName }.toMutableMap()
         val next = transform(current[packageName] ?: AppRule(packageName = packageName))
         current[packageName] = next
@@ -91,7 +93,7 @@ fun DeviceControlScreen(
 
     fun bulkUpdate(transform: (AppRule) -> AppRule, message: String) {
         val current = appRules.associateBy { it.packageName }.toMutableMap()
-        selected.value.forEach { pkg ->
+        selected.value.filterNot { it == ownPackage }.forEach { pkg ->
             current[pkg] = transform(current[pkg] ?: AppRule(packageName = pkg))
         }
         onAppRulesChanged(current.values.sortedBy { it.packageName })
@@ -116,7 +118,7 @@ fun DeviceControlScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { selected.value = filtered.map { it.packageName }.toSet() }) { Text("Select filtered") }
+                    Button(onClick = { selected.value = filtered.map { it.packageName }.filterNot { it == ownPackage }.toSet() }) { Text("Select filtered") }
                     Button(onClick = { selected.value = emptySet() }) { Text("Clear") }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -132,6 +134,7 @@ fun DeviceControlScreen(
             items(filtered, key = { it.packageName }) { app ->
                 val rule = rulesByPackage[app.packageName]
                 val isSelected = app.packageName in selected.value
+                val isHostApp = app.packageName == ownPackage
                 ElevatedCard {
                     Column(Modifier.fillMaxWidth().padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
@@ -139,9 +142,11 @@ fun DeviceControlScreen(
                                 Text(app.label)
                                 Text(app.packageName, style = MaterialTheme.typography.bodySmall)
                                 if (app.isSystemApp) Text("System app", style = MaterialTheme.typography.bodySmall)
+                                if (isHostApp) Text("Host DPC app cannot block itself", style = MaterialTheme.typography.bodySmall)
                             }
                             Checkbox(
                                 checked = isSelected,
+                                enabled = !isHostApp,
                                 onCheckedChange = { checked ->
                                     selected.value = if (checked) selected.value + app.packageName else selected.value - app.packageName
                                 }
@@ -150,6 +155,7 @@ fun DeviceControlScreen(
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             FilterChip(
                                 selected = rule?.blocked == true,
+                                enabled = !isHostApp,
                                 onClick = {
                                     updateRule(app.packageName) { it.copy(blocked = !it.blocked, networkBlocked = !it.blocked) }
                                     onAppAction("${app.label} updated. Press Apply changes to enforce blocking.")
@@ -158,6 +164,7 @@ fun DeviceControlScreen(
                             )
                             FilterChip(
                                 selected = rule?.suspended == true,
+                                enabled = !isHostApp,
                                 onClick = {
                                     updateRule(app.packageName) { it.copy(suspended = !it.suspended) }
                                     onAppAction("${app.label} updated. Press Apply changes to enforce suspension.")
@@ -166,6 +173,7 @@ fun DeviceControlScreen(
                             )
                             FilterChip(
                                 selected = rule?.networkBlocked == true,
+                                enabled = !isHostApp,
                                 onClick = {
                                     updateRule(app.packageName) { it.copy(networkBlocked = !it.networkBlocked) }
                                     onAppAction("${app.label} network rule updated. Press Apply changes to enforce it.")

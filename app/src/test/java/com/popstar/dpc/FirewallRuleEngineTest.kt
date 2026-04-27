@@ -2,6 +2,7 @@ package com.popstar.dpc
 
 import com.popstar.dpc.data.firewall.FirewallRuleEngine
 import com.popstar.dpc.data.model.FirewallRule
+import com.popstar.dpc.data.model.FirewallRuleType
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -53,5 +54,41 @@ class FirewallRuleEngineTest {
             FirewallRule("2", "*", block = true, priority = 2)
         )
         assertFalse(engine.shouldBlock("cdn.example.com", null, rules))
+    }
+
+    @Test
+    fun ipCidrRuleMatchesDestination() {
+        val rules = listOf(
+            FirewallRule("1", "203.0.113.0/24", block = true, priority = 1, type = FirewallRuleType.IP)
+        )
+        assertTrue(engine.evaluateIp("203.0.113.10", null, rules)?.block == true)
+        assertNull(engine.evaluateIp("203.0.114.10", null, rules))
+    }
+
+    @Test
+    fun appSpecificIpRuleOnlyMatchesSelectedApp() {
+        val rules = listOf(
+            FirewallRule("1", "203.0.113.10", appPackage = "a", block = true, priority = 1, type = FirewallRuleType.IP)
+        )
+        assertTrue(engine.evaluateIp("203.0.113.10", "a", rules)?.block == true)
+        assertNull(engine.evaluateIp("203.0.113.10", "b", rules))
+    }
+
+    @Test
+    fun routedIpRulesOnlyIncludesGlobalBlocks() {
+        val rules = listOf(
+            FirewallRule("1", "203.0.113.0/24", block = true, priority = 1, type = FirewallRuleType.IP),
+            FirewallRule("2", "198.51.100.0/24", appPackage = "a", block = true, priority = 2, type = FirewallRuleType.IP),
+            FirewallRule("3", "192.0.2.1", block = false, priority = 3, type = FirewallRuleType.IP)
+        )
+        val routes = engine.routedIpRules(rules)
+        assertEquals(1, routes.size)
+        assertEquals("203.0.113.0", routes.single().address)
+        assertEquals(24, routes.single().prefixLength)
+    }
+
+    @Test
+    fun rejectsDefaultRouteForIpRules() {
+        assertFalse(engine.isValidPattern(FirewallRuleType.IP, "0.0.0.0/0"))
     }
 }

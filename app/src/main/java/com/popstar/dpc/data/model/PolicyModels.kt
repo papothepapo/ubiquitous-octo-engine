@@ -9,6 +9,9 @@ enum class PasswordEnforcementMode { TIMED, PERSISTENT, DISABLED }
 enum class AppThemeMode { SYSTEM, LIGHT, DARK }
 
 @Serializable
+enum class FirewallRuleType { DOMAIN, IP }
+
+@Serializable
 data class PasswordPolicy(
     val mode: PasswordEnforcementMode = PasswordEnforcementMode.DISABLED,
     val timedDays: Int = 0,
@@ -47,7 +50,9 @@ data class FirewallRule(
     val pattern: String,
     val appPackage: String? = null,
     val block: Boolean = true,
-    val priority: Int = 100
+    val priority: Int = 100,
+    val type: FirewallRuleType = FirewallRuleType.DOMAIN,
+    val enabled: Boolean = true
 )
 
 @Serializable
@@ -70,7 +75,13 @@ data class VpnLogEntry(
     val category: String,
     val appPackage: String? = null,
     val site: String? = null,
-    val details: String
+    val details: String,
+    val destIp: String? = null,
+    val destPort: Int? = null,
+    val protocol: String? = null,
+    val ruleId: String? = null,
+    val rulePattern: String? = null,
+    val action: String = "BLOCK"
 )
 
 @Serializable

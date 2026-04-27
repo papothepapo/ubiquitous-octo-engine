@@ -51,7 +51,6 @@ import androidx.navigation.compose.rememberNavController
 import com.popstar.dpc.auth.PasswordPolicyEvaluator
 import com.popstar.dpc.data.firewall.FirewallRuntime
 import com.popstar.dpc.data.model.AppRule
-import com.popstar.dpc.data.model.FirewallRule
 import com.popstar.dpc.data.model.PasswordEnforcementMode
 import com.popstar.dpc.data.model.PasswordPolicy
 import com.popstar.dpc.data.model.PolicyBundle
@@ -358,6 +357,7 @@ private fun MainTabs(
                     installedApps = installedApps,
                     appRules = bundle.appRules,
                     deviceAdmins = deviceAdmins,
+                    ownPackage = context.packageName,
                     onAppRulesChanged = {
                         updateBundle { current -> current.copy(appRules = it) }
                     },
@@ -394,7 +394,7 @@ private fun MainTabs(
                     blockedEvents = FirewallRuntime.events(),
                     vpnStatus = vpnStatus,
                     vpnLockdown = bundle.vpnLockdown,
-                    availableVpnApps = installedApps.filter { it.isVpnCapable },
+                    installedApps = installedApps,
                     onStartVpn = {
                         val prepareIntent = VpnService.prepare(context)
                         if (prepareIntent != null) {
@@ -413,14 +413,39 @@ private fun MainTabs(
                         vpnStatus = "VPN stopped"
                         showMessage(vpnStatus!!)
                     },
-                    onAddRule = { pattern ->
-                        val next = FirewallRule(
-                            id = System.currentTimeMillis().toString(),
-                            pattern = pattern,
-                            priority = bundle.firewallRules.size + 1
-                        )
-                        updateBundle { current -> current.copy(firewallRules = current.firewallRules + next) }
-                        showMessage("Rule added. It takes effect after Apply changes.")
+                    onSaveRule = { rule ->
+                        updateBundle { current ->
+                            val exists = current.firewallRules.any { it.id == rule.id }
+                            val nextRules = if (exists) {
+                                current.firewallRules.map { if (it.id == rule.id) rule else it }
+                            } else {
+                                current.firewallRules + rule
+                            }
+                            current.copy(firewallRules = nextRules)
+                        }
+                        if (VpnService.prepare(context) == null) {
+                            ContextCompat.startForegroundService(
+                                context,
+                                com.popstar.dpc.vpn.PopstarVpnService.startIntent(context)
+                            )
+                            vpnStatus = "VPN refreshed"
+                        } else {
+                            vpnStatus = "Rule saved. Start VPN to enforce it."
+                        }
+                        showMessage(vpnStatus!!)
+                    },
+                    onDeleteRule = { ruleId ->
+                        updateBundle { current -> current.copy(firewallRules = current.firewallRules.filterNot { it.id == ruleId }) }
+                        if (VpnService.prepare(context) == null) {
+                            ContextCompat.startForegroundService(
+                                context,
+                                com.popstar.dpc.vpn.PopstarVpnService.startIntent(context)
+                            )
+                            vpnStatus = "VPN refreshed"
+                        } else {
+                            vpnStatus = "Rule deleted"
+                        }
+                        showMessage(vpnStatus!!)
                     },
                     onClearLogs = {
                         FirewallRuntime.clear()

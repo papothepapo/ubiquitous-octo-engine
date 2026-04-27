@@ -85,22 +85,29 @@ class PopstarVpnService : VpnService() {
 
                 if (routedPackages.isEmpty()) {
                     legacyBlockedAppSinkActive = false
-                    DNS_ROUTES.forEach { resolver -> builder.addRoute(resolver, 32) }
+                    addTargetRoutes(builder)
                 } else {
                     legacyBlockedAppSinkActive = true
                     builder.addRoute("0.0.0.0", 0)
                 }
             } else {
                 legacyBlockedAppSinkActive = false
-                DNS_ROUTES.forEach { resolver ->
-                    builder.addRoute(resolver, 32)
-                }
+                addTargetRoutes(builder)
             }
 
             DNS_UPSTREAMS.forEach { resolver -> builder.addDnsServer(resolver) }
 
             builder.establish()
         }.getOrNull()
+    }
+
+    private fun addTargetRoutes(builder: Builder) {
+        DNS_ROUTES.forEach { resolver ->
+            runCatching { builder.addRoute(resolver, 32) }
+        }
+        ruleEngine.routedIpRules(FirewallRuntime.rules).forEach { route ->
+            runCatching { builder.addRoute(route.address, route.prefixLength) }
+        }
     }
 
     private fun rebuildVpnInterface() {
@@ -139,18 +146,56 @@ class PopstarVpnService : VpnService() {
                                 continue
                             }
 
+                            val metadata = PacketParsers.extractConnectionMetadata(buffer, length)
                             val appPackage = resolvePacketOwnerPackage(buffer, length)
+                            val protocol = metadata?.protocolLabel()
+                            val destIp = metadata?.destIp?.let(::intToIpv4String)
+                            val destPort = metadata?.destPort
                             if (appPackage != null && appPackage in FirewallRuntime.blockedPackages) {
-                                FirewallRuntime.logBlocked(category = "app", appPackage = appPackage, details = "Blocked app DNS request")
+                                FirewallRuntime.logBlocked(
+                                    category = "app",
+                                    appPackage = appPackage,
+                                    details = "Blocked app traffic",
+                                    destIp = destIp,
+                                    destPort = destPort,
+                                    protocol = protocol
+                                )
                                 continue
+                            }
+
+                            if (destIp != null) {
+                                val ipDecision = ruleEngine.evaluateIp(destIp, appPackage, FirewallRuntime.rules)
+                                if (ipDecision != null) {
+                                    logRuleDecision(
+                                        category = "ip",
+                                        decision = ipDecision,
+                                        appPackage = appPackage,
+                                        site = null,
+                                        destIp = destIp,
+                                        destPort = destPort,
+                                        protocol = protocol
+                                    )
+                                    if (ipDecision.block) continue
+                                }
                             }
 
                             val host = PacketParsers.extractDnsQueryHost(buffer, length)
                                 ?: PacketParsers.extractTlsSniHost(buffer, length)
 
-                            if (host != null && ruleEngine.shouldBlock(host, appPackage, FirewallRuntime.rules)) {
-                                FirewallRuntime.logBlocked(category = "site", appPackage = appPackage, site = host, details = if (appPackage == null) "Blocked host" else "Blocked host for app")
-                                continue
+                            if (host != null) {
+                                val domainDecision = ruleEngine.evaluateDomain(host, appPackage, FirewallRuntime.rules)
+                                if (domainDecision != null) {
+                                    logRuleDecision(
+                                        category = "site",
+                                        decision = domainDecision,
+                                        appPackage = appPackage,
+                                        site = host,
+                                        destIp = destIp,
+                                        destPort = destPort,
+                                        protocol = protocol
+                                    )
+                                    if (domainDecision.block) continue
+                                }
                             }
 
                             val dnsQuery = DnsTunnelPacketCodec.parseQuery(buffer, length)
@@ -160,6 +205,26 @@ class PopstarVpnService : VpnService() {
                                 output.write(packet)
                                 output.flush()
                                 continue
+                            }
+
+                            val udpPacket = UdpTunnelPacketCodec.parsePacket(buffer, length)
+                            if (udpPacket != null) {
+                                val response = forwardUdpPacket(udpPacket) ?: continue
+                                val packet = UdpTunnelPacketCodec.buildResponse(udpPacket, response)
+                                output.write(packet)
+                                output.flush()
+                                continue
+                            }
+
+                            if (metadata?.protocol == 6) {
+                                FirewallRuntime.logBlocked(
+                                    category = "tcp",
+                                    appPackage = appPackage,
+                                    details = "Dropped captured TCP packet; full TCP forwarding is not enabled",
+                                    destIp = destIp,
+                                    destPort = destPort,
+                                    protocol = protocol
+                                )
                             }
 
                             // Normal app traffic remains on the system network unless Android
@@ -186,6 +251,43 @@ class PopstarVpnService : VpnService() {
             FirewallRuntime.logBlocked(
                 category = "app",
                 details = "Blocked app traffic on Android 9 or below"
+            )
+        }
+    }
+
+    private fun logRuleDecision(
+        category: String,
+        decision: FirewallRuleEngine.Decision,
+        appPackage: String?,
+        site: String?,
+        destIp: String?,
+        destPort: Int?,
+        protocol: String?
+    ) {
+        val details = if (decision.block) "Matched blocking rule" else "Matched allow rule"
+        if (decision.block) {
+            FirewallRuntime.logBlocked(
+                category = category,
+                appPackage = appPackage,
+                site = site,
+                details = details,
+                destIp = destIp,
+                destPort = destPort,
+                protocol = protocol,
+                ruleId = decision.rule.id,
+                rulePattern = decision.rule.pattern
+            )
+        } else {
+            FirewallRuntime.logAllowed(
+                category = category,
+                appPackage = appPackage,
+                site = site,
+                details = details,
+                destIp = destIp,
+                destPort = destPort,
+                protocol = protocol,
+                ruleId = decision.rule.id,
+                rulePattern = decision.rule.pattern
             )
         }
     }
@@ -232,6 +334,26 @@ class PopstarVpnService : VpnService() {
         }.getOrNull()
     }
 
+    private fun forwardUdpPacket(packet: UdpTunnelPacketCodec.UdpPacket): UdpTunnelPacketCodec.UdpResponse? {
+        return runCatching {
+            DatagramSocket().use { socket ->
+                protect(socket)
+                socket.soTimeout = 1_500
+                val destination = InetAddress.getByAddress(intToIpv4(packet.destIp))
+                val request = DatagramPacket(packet.payload, packet.payload.size, destination, packet.destPort)
+                socket.send(request)
+                val responseBuffer = ByteArray(4096)
+                val response = DatagramPacket(responseBuffer, responseBuffer.size)
+                socket.receive(response)
+                UdpTunnelPacketCodec.UdpResponse(
+                    sourceIp = byteArrayToIpv4Int(response.address.address),
+                    sourcePort = response.port,
+                    payload = response.data.copyOf(response.length)
+                )
+            }
+        }.getOrNull()
+    }
+
     private fun intToIpv4(value: Int): ByteArray {
         return byteArrayOf(
             ((value ushr 24) and 0xFF).toByte(),
@@ -239,6 +361,26 @@ class PopstarVpnService : VpnService() {
             ((value ushr 8) and 0xFF).toByte(),
             (value and 0xFF).toByte()
         )
+    }
+
+    private fun intToIpv4String(value: Int): String {
+        return intToIpv4(value).joinToString(".") { (it.toInt() and 0xFF).toString() }
+    }
+
+    private fun byteArrayToIpv4Int(value: ByteArray): Int {
+        if (value.size != 4) return 0
+        return ((value[0].toInt() and 0xFF) shl 24) or
+            ((value[1].toInt() and 0xFF) shl 16) or
+            ((value[2].toInt() and 0xFF) shl 8) or
+            (value[3].toInt() and 0xFF)
+    }
+
+    private fun PacketParsers.ConnectionMetadata.protocolLabel(): String {
+        return when (protocol) {
+            6 -> "TCP"
+            17 -> "UDP"
+            else -> protocol.toString()
+        }
     }
 
     override fun onRevoke() {
